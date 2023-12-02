@@ -1,5 +1,5 @@
 ROLLNAME	= ganglia
-RELEASE		= 2
+RELEASE		= UCR
 COLOR		= darkkhaki
 
 REDHAT.ROOT	= $(CURDIR)
