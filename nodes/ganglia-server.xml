@@ -332,7 +332,7 @@ mkdir -p /etc/ganglia
 /sbin/chkconfig --add gmetad
 </post>
 
-<post cond="rocks_version_major == 7">
+<post cond="rocks_version_major &gt;= 7">
 /sbin/chkconfig --add ganglia-restore-rrds
 /usr/bin/systemctl enable gmetad
 </post>

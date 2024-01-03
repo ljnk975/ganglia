@@ -105,7 +105,7 @@
 <post os="linux" cond="rocks_version_major == 6">
 /sbin/chkconfig --del gmetad
 </post>
-<post os="linux" cond="rocks_version_major == 7">
+<post os="linux" cond="rocks_version_major &gt;= 7">
 /usr/bin/systemctl disable gmetad
 </post>
 

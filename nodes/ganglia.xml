@@ -159,7 +159,7 @@ fi
 /sbin/chkconfig --add gmond
 </post>
 
-<post cond="rocks_version_major == 7">
+<post cond="rocks_version_major &gt;= 7">
 /usr/bin/systemctl enable gmond
 </post>
 
