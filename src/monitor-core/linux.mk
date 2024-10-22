@@ -10,11 +10,12 @@ build:
 			--with-gmetad 				\
 			--with-libconfuse=/opt/confuse		\
 			--with-librrd=/opt/rocks/lib		\
+			--with-python=/opt/rocks/bin/python \
 			--sysconfdir=/etc/ganglia		\
-			CFLAGS="-I/opt/rocks/include -DROCKS"	\
-			CPPFLAGS="-I/opt/rocks/include"		\
+			CFLAGS="-I/opt/rocks/include -I/usr/include/tirpc -DROCKS"	\
+			CPPFLAGS="-I/opt/rocks/include -I/usr/include/tirpc"		\
 			LDFLAGS="-L/opt/rocks/lib -L/opt/confuse/lib"\
-			LIBS="-lm -lutil"	;		\
+			LIBS="-lm -lutil -ltirpc"	;		\
 		$(MAKE);					\
 	)
 
