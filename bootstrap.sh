@@ -134,7 +134,8 @@ if [ `./_os` == "linux" ]; then
 	install foundation-rrdtool
 fi
 
-compile_and_install confuse
+compile confuse
+install foundation-confuse
 
 if [ `./_os` == "sunos" ]; then
 	compile_and_install apr

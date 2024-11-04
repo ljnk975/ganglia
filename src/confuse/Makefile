@@ -85,9 +85,9 @@ REDHAT.ROOT = $(CURDIR)/../../
 include Rules.mk
 
 build::
-	gunzip -c $(NAME)-$(VERSION).tar.gz | $(TAR) -xf -
+	gunzip -c $(TNAME)-$(VERSION).tar.gz | $(TAR) -xf -
 	(					\
-		cd $(NAME)-$(VERSION) ;		\
+		cd $(TNAME)-$(VERSION) ;		\
 		./configure --prefix=$(PKGROOT) \
 			--enable-shared ;	\
 		$(MAKE) ;			\
@@ -95,9 +95,9 @@ build::
 
 install::
 	(							\
-		cd $(NAME)-$(VERSION) ;				\
+		cd $(TNAME)-$(VERSION) ;				\
 		$(MAKE) prefix=$(ROOT)/$(PKGROOT) install ;	\
 	)
 
 clean::
-	rm -rf $(NAME)-$(VERSION)
+	rm -rf $(TNAME)-$(VERSION)
