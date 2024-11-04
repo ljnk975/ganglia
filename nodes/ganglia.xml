@@ -139,9 +139,9 @@
 	<package os="linux">ganglia-monitor-core</package>
 	<package os="linux">ganglia-python</package>
 	<package os="linux">rocks-ganglia</package>
-	<package os="linux">confuse</package>
+	<package os="linux">foundation-confuse</package>
 
-	<package os="sunos">ROCKSconfuse</package>
+	<package os="sunos">ROCKSfoundation-confuse</package>
 	<package os="sunos">ROCKSapr</package>
 	<package os="sunos">ROCKSapr-util</package>
 	<package os="sunos">ROCKSganglia-monitor-core</package>
