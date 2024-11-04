@@ -136,11 +136,10 @@
 #
 
 import socket
-import string
 import sys
-import xml.sax
-from xml.sax import handler
-import xml.sax.saxutils
+import _xmlplus.sax
+from _xmlplus.sax import handler
+import _xmlplus.sax.saxutils
 
 
 class GangliaError(Exception):
@@ -170,10 +169,10 @@ class Root:
 		return self.clusters[name]
 
 	def getClusters(self):
-		return self.clusters.values()
+		return list(self.clusters.values())
 
 	def getClusterNames(self):
-		list = self.clusters.keys()
+		list = list(self.clusters.keys())
 		list.sort()
 		return list
 
@@ -207,17 +206,17 @@ class Cluster:
 		self.hosts[host.getName()] = host
 
 	def getHosts(self):
-		return self.hosts.values()
+		return list(self.hosts.values())
 
 	def getName(self):
 		return self.name
 
 	def getID(self):
-		return string.join(string.split(self.name), '_')
+		return '_'.join(self.name.split())
 
 	def getUniqueID(self):
-		return '%s-%s' % (string.join(string.split(self.name), '_'),
-				  string.join(string.split(self.owner), '_'))
+		return '%s-%s' % ('_'.join(self.name.split()),
+				  '_'.join(self.owner.split()))
 
 	def getOwner(self):
 		return self.owner
@@ -242,7 +241,7 @@ class Cluster:
 		"""Returns a single host if present. Fastest to do this
 		lookup here, in our dictionary."""
 
-		if self.hosts.has_key(name):
+		if name in self.hosts:
 			return self.hosts[name]
 		else:
 			return None
@@ -262,11 +261,11 @@ class Host:
 		self.metrics = {}
 
 	def __repr__(self):
-		list = []
-		list.append('%s at %s' % (self.name, self.time))
-		for key in self.metrics.keys():
-			list.append(self.metrics[key].__repr__())
-		return string.join(list, '\n')
+		list_ = []
+		list_.append('%s at %s' % (self.name, self.time))
+		for key in list(self.metrics.keys()):
+			list_.append(self.metrics[key].__repr__())
+		return '\n'.join(list_)
 
 	def flush(self):
 		"A deep delete to remove reference counts to self"
@@ -292,7 +291,7 @@ class Host:
 
 	def getMetricNames(self):
 		list = []
-		for name in self.metrics.keys():
+		for name in list(self.metrics.keys()):
 			list.append(name)
 		list.sort()
 		return list
@@ -336,7 +335,7 @@ class Host:
 
 	def getMetrics(self):
 		"Return a list with all our metrics."
-		return self.metrics.values()
+		return list(self.metrics.values())
 
 
 	def addMetric(self, metric):
@@ -428,15 +427,15 @@ class Ganglia(handler.ContentHandler,
 		self.svcport    = port
 		self.xml        = ''
 
-		self.parser = xml.sax.make_parser()
+		self.parser = _xmlplus.sax.make_parser()
 		self.parser.setContentHandler(self)
 
 
 	def __repr__(self):
-		list = []
+		list_ = []
 		for host in self.root.getHosts():
-			list.append(host.__repr__())
-		return string.join(list, '\n')
+			list_.append(host.__repr__())
+		return '\n'.join(list_)
 
 	def setHost(self, host):
 		"Will point to another gmond. Takes effect on the next refresh."
@@ -457,7 +456,7 @@ class Ganglia(handler.ContentHandler,
 			try:
 				fin = open(file, 'r')
 			except:
-				raise GangliaError, 'cannot open file %s' % file
+				raise GangliaError('cannot open file %s' % file)
 
 			fin = open(file, 'r')
 			self.parser.parse(fin)
@@ -472,15 +471,15 @@ class Ganglia(handler.ContentHandler,
 		try:
 			sock.connect((self.svchost, self.svcport))
 		except:
-			raise GangliaError, 'cannot connect to ganglia server (gmond) [%s:%s]' \
-				% (self.svchost, self.svcport)
+			raise GangliaError('cannot connect to ganglia server (gmond) [%s:%s]' \
+				% (self.svchost, self.svcport))
 
 		# Clear old tree from memory. Reassignment will call
 		# __del__ methods. Careful to set refcounts to 0.
 		self.cluster = None
 		self.host = None
 		sys.last_traceback = None
-		sys.exc_traceback = None
+		sys.exc_info()[2] = None
 
 		if (self.root): self.root.flush()
 		self.root = None
@@ -580,7 +579,7 @@ class Ganglia(handler.ContentHandler,
 			if len(clusters) == 1:
 				return self.root.getCluster(clusters[0])
 			else:
-				raise GangliaError, 'cannot handle multiple clusters'
+				raise GangliaError('cannot handle multiple clusters')
 		else:
 			return self.root.getCluster(name)
 

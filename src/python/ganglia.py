@@ -202,9 +202,8 @@ class App:
 
 	def help(self, formats, selects):
 
-		print 'Usage: ganglia [options] metric [metric ...]'
-		print \
-"""where options are:
+		print('Usage: ganglia [options] metric [metric ...]')
+		print("""where options are:
 \t --format=[name] \t Output format: %s
 \t --select=[name] \t Query processor: %s
 \t --host=[host] \t\t Gmond host (default: localhost)
@@ -214,7 +213,7 @@ class App:
 \t --clustersize \t\t Print the number of live hosts in the cluster.
 \t --alive=[hostname] \t\t Returns 1 if host is alive
 \t --dead \t\t Lists dead nodes
-""" % (formats, selects)
+""" % (formats, selects))
 
 
 	def main(self):
@@ -267,7 +266,7 @@ class App:
 				self.ganglia.setPort(c[1])
 			elif c[0] == '--xml':
 				self.ganglia.connect()
-				print self.ganglia.getXML()
+				print(self.ganglia.getXML())
 				sys.exit(0)
 			elif c[0] == '--clustersize':
 				self.doClustersize = 1
@@ -284,19 +283,19 @@ class App:
 			self.ganglia.connect(self.inputFile)
 
 		if self.doClustersize:
-			print self.ganglia.clusterSize()
+			print(self.ganglia.clusterSize())
 			return
 
 		if self.isAlive:
 			h = self.ganglia.getCluster().getHost(self.isAlive)
 			if h:
 				isalive = h.alive()
-				print isalive
+				print(isalive)
 				# Return 0 if alive, 1 otherwise
 				# as per UNIX convention.
 				sys.exit(not isalive)
 			else:
-				raise GangliaError, 'cannot find host %s. Did you give the full domain name too?' % self.isAlive
+				raise GangliaError('cannot find host %s. Did you give the full domain name too?' % self.isAlive)
 
 		# Does not make sense to format a list of dead nodes,
 		# since there will be no valid metrics. Be simple.
@@ -306,7 +305,7 @@ class App:
 				if not h:
 					continue
 				if not h.alive():
-					print h.getName().split('.')[0]
+					print(h.getName().split('.')[0])
 			return
 
 
@@ -317,7 +316,7 @@ class App:
 		try:
 			factory = eval('gmon.select.' + self.selector)
 		except AttributeError:
-			raise GangliaError, 'cannot load %s' % self.selector
+			raise GangliaError('cannot load %s' % self.selector)
 
 		selector = factory(self.ganglia, args, self.selectorArgs)
 
@@ -329,7 +328,7 @@ class App:
 		try:
 			factory = eval('gmon.format.' + self.formatter)
 		except AttributeError:
-			raise GangliaError, 'cannot load %s' % self.formatter
+			raise GangliaError('cannot load %s' % self.formatter)
 
 		formatter = factory(self.ganglia, args, self.formatterArgs)
 
@@ -347,6 +346,6 @@ class App:
 app = App(sys.argv)
 try:
 	app.main()
-except GangliaError, msg:
-	print 'ERROR:', msg
+except GangliaError as msg:
+	print('ERROR:', msg)
 	sys.exit(-1)

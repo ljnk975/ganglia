@@ -153,8 +153,8 @@ class Base:
 
 	def flavors(self):
 		selects = []
-		for Class in globals().values():
-			if type(Class) == types.ClassType:
+		for Class in list(globals().values()):
+			if type(Class) == type:
 				if issubclass(Class, Base) and Class != Base:
 					selects.append(Class.__name__)
 		return selects
@@ -167,15 +167,15 @@ class Default(Base):
 		return self.commands
 
 	def help(self):
-		print 'where "metric" is one of:'
+		print('where "metric" is one of:')
 		line = ''
 		for metric in self.ganglia.getMetricNames():
 			if len(line) + len(metric) > 70:
-				print '\t%s' % line
+				print('\t%s' % line)
 				line = ''
 			else:
 				line = line + ' ' + metric
-		print '\t%s' % line
+		print('\t%s' % line)
 
 
 class All(Base):

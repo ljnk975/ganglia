@@ -190,7 +190,6 @@ import sys
 import re
 import time
 import types
-import string
 import gmon.ganglia
 
 class Base:
@@ -207,8 +206,8 @@ class Base:
 
 	def flavors(self):
 		formats = []
-		for Class in globals().values():
-			if type(Class) == types.ClassType:
+		for Class in list(globals().values()):
+			if type(Class) == type:
 				if issubclass(Class, Base) and Class != Base:
 					formats.append(Class.__name__)
 		return formats
@@ -225,7 +224,7 @@ class Default(Base):
 			# and is just reporting ip address.  In this
 			# case use the full IP address.
 
-			hostname = string.split(host.getName(), '.')[0]
+			hostname = host.getName().split('.')[0]
 			try:
 				int(hostname)
 				hostname = host.getName()
@@ -262,12 +261,12 @@ class Default(Base):
 		for row in cols:
 			for i in range(0, len(row)):
 				if i == 0:
-					print string.ljust(row[i], maxCols[i]),
+					print(row[i].ljust(maxCols[i]), end=' ')
 				else:
-					print string.rjust(row[i], maxCols[i]),
+					print(row[i].rjust(maxCols[i]), end=' ')
 				if i < len(row)-1:
-					print '\t',
-			print
+					print('\t', end=' ')
+			print()
 
 
 
@@ -293,7 +292,7 @@ class MDS(Base):
 		dn = self.createClusterTopRecord(dn, hosts[0].getOwner())
 
 		i = 1
-		for id in subclusters.keys():
+		for id in list(subclusters.keys()):
 			subcluster = subclusters[id]
 			self.createSubClusterRecord(dn, "sub%s" % i, id, subcluster)
 			i = i + 1
@@ -302,24 +301,24 @@ class MDS(Base):
 
 
 	def createEDTTopRecord(self, dn):
-		print 'dn:', dn
-		print 'objectclass: GlueTop'
-		print 'objectclass: GlueGeneralTop'
-		print 'GlueSchemaVersionMajor:', self.schemaVersion[0]
-		print 'GlueSchemaVersionMinor:', self.schemaVersion[1]
-		print # end of record
+		print('dn:', dn)
+		print('objectclass: GlueTop')
+		print('objectclass: GlueGeneralTop')
+		print('GlueSchemaVersionMajor:', self.schemaVersion[0])
+		print('GlueSchemaVersionMinor:', self.schemaVersion[1])
+		print() # end of record
 		return dn
 
 	def createClusterTopRecord(self, dn, cluster):
 		dn = 'cl=datatag-CNAF, %s' % dn
-		print 'dn:', dn
-		print 'objectclass: GlueClusterTop'
-		print 'objectclass: GlueCluster'
-		print 'GlueClusterName:', cluster.getID()
-		print 'GlueClusterUniqueID:', cluster.getUniqueID()
+		print('dn:', dn)
+		print('objectclass: GlueClusterTop')
+		print('objectclass: GlueCluster')
+		print('GlueClusterName:', cluster.getID())
+		print('GlueClusterUniqueID:', cluster.getUniqueID())
 		# Depricated.
 		#print 'GlueClusterService: compute'
-		print # end of record
+		print() # end of record
 		return dn
 
 	def createSubClusterRecord(self, dn, name, id, hosts):
@@ -336,21 +335,21 @@ class MDS(Base):
 		os = host.getMetricValue('os_name')
 		os_release = host.getMetricValue('os_release')
 		# Assuming a redhat RPM style 'os_release' metric: version-release.
-		version, release = string.split(os_release,"-")
+		version, release = os_release.split("-")
 
-		print 'dn:', dn
-		print 'objectclass: GlueClusterTop'
-		print 'objectclass: GlueSubCluster'
-		print 'GlueSubClusterName: %s' % name
-		print 'GlueSubClusterUniqueID: %s' % id
-		print 'objectclass: GlueHostOperatingSystem'
-		print 'GlueHostOperatingSystemName:', os
-		print 'GlueHostOperatingSystemVersion:', version
-		print 'GlueHostOperatingSystemRelease:', release
-		print 'objectclass: GlueHostProcessor'
-		print 'GlueHostProcessorInstructionSet:', \
-		      host.getMetricValue('machine_type')
-		print # end of record
+		print('dn:', dn)
+		print('objectclass: GlueClusterTop')
+		print('objectclass: GlueSubCluster')
+		print('GlueSubClusterName: %s' % name)
+		print('GlueSubClusterUniqueID: %s' % id)
+		print('objectclass: GlueHostOperatingSystem')
+		print('GlueHostOperatingSystemName:', os)
+		print('GlueHostOperatingSystemVersion:', version)
+		print('GlueHostOperatingSystemRelease:', release)
+		print('objectclass: GlueHostProcessor')
+		print('GlueHostProcessorInstructionSet:', \
+		      host.getMetricValue('machine_type'))
+		print() # end of record
 
 		for host in hosts:
 			self.createHostRecord(dn, host)
@@ -359,83 +358,83 @@ class MDS(Base):
 
 	def createHostRecord(self, dn, host):
 		dn = 'host=%s, %s' % (host.getName(), dn)
-		print 'dn:', dn
+		print('dn:', dn)
 
 		# Host
-		print 'objectclass: GlueHost'
-		print 'GlueHostName:', host.getName()
+		print('objectclass: GlueHost')
+		print('GlueHostName:', host.getName())
 		id = '%s-%s'  % (host.getOwner().getUniqueID(), host.getName())
-		print 'GlueHostUniqueID:', id
+		print('GlueHostUniqueID:', id)
 
 		# HostArchitecture
-		print 'objectclass: GlueHostArchitecture'
+		print('objectclass: GlueHostArchitecture')
 		try:
 			arch = "%s-%s" % \
 				(host.getMetricValue("machine_type"),
 				host.getMetricValue("os_name"))
-			print 'GlueHostArchitecturePlatformType:', arch
+			print('GlueHostArchitecturePlatformType:', arch)
 		except:
 			pass
 
-		print 'GlueHostArchitectureSMPSize:', \
-		      host.getMetricValue('cpu_num')
+		print('GlueHostArchitectureSMPSize:', \
+		      host.getMetricValue('cpu_num'))
 
 		# HostProcessor
-		print 'objectclass: GlueHostProcessor'
-		print 'GlueHostProcessorClockSpeed:', \
-		      host.getMetricValue('cpu_speed')
+		print('objectclass: GlueHostProcessor')
+		print('GlueHostProcessorClockSpeed:', \
+		      host.getMetricValue('cpu_speed'))
 
 		# HostMainMemory
-		print 'objectclass: GlueHostMainMemory'
-		print 'GlueHostMainMemoryRAMSize:', \
-		      host.getMetricValue('mem_total')
-		print 'GlueHostMainMemoryRAMAvailable:', \
-		      host.getMetricValue('mem_free')
+		print('objectclass: GlueHostMainMemory')
+		print('GlueHostMainMemoryRAMSize:', \
+		      host.getMetricValue('mem_total'))
+		print('GlueHostMainMemoryRAMAvailable:', \
+		      host.getMetricValue('mem_free'))
 
 		# NetworkAdapter
-		print 'objectclass: GlueHostNetworkAdapter'
-		print 'GlueHostNetworkAdapterName:', host.getName()
-		print 'GlueHostNetworkAdapterIPAddress:', host.getIP()
-		print 'GlueHostNetworkAdapterMTU:', \
-				host.getMetricValue('mtu')
-		print 'GlueHostNetworkAdapterOutboundIP: 1'
-		print 'GlueHostNetworkAdapterInboundIP: 1'
+		print('objectclass: GlueHostNetworkAdapter')
+		print('GlueHostNetworkAdapterName:', host.getName())
+		print('GlueHostNetworkAdapterIPAddress:', host.getIP())
+		print('GlueHostNetworkAdapterMTU:', \
+				host.getMetricValue('mtu'))
+		print('GlueHostNetworkAdapterOutboundIP: 1')
+		print('GlueHostNetworkAdapterInboundIP: 1')
 
 		# ProcessorLoad
-		print 'objectclass: GlueHostProcessorLoad'
-		print 'GlueHostProcessorLoadLast1Min:', \
-				host.getMetricValue('load_one')
-		print 'GlueHostProcessorLoadLast5Min:', \
-				host.getMetricValue('load_five')
-		print 'GlueHostProcessorLoadLast15Min:', \
-				host.getMetricValue('load_fifteen')
+		print('objectclass: GlueHostProcessorLoad')
+		print('GlueHostProcessorLoadLast1Min:', \
+				host.getMetricValue('load_one'))
+		print('GlueHostProcessorLoadLast5Min:', \
+				host.getMetricValue('load_five'))
+		print('GlueHostProcessorLoadLast15Min:', \
+				host.getMetricValue('load_fifteen'))
 
 		# SMPLoad (same as ProcessorLoad but only if we are SMP)
 		smp = host.getMetric('cpu_num')
 		if smp:
-			print 'objectclass: GlueHostSMPLoad'
-			print 'GlueHostSMPLoadLast1Min:', \
-				host.getMetricValue('load_one')
-			print 'GlueHostSMPLoadLast5Min:', \
-				host.getMetricValue('load_five')
-			print 'GlueHostSMPLoadLast15Min:', \
-				host.getMetricValue('load_fifteen')
+			print('objectclass: GlueHostSMPLoad')
+			print('GlueHostSMPLoadLast1Min:', \
+				host.getMetricValue('load_one'))
+			print('GlueHostSMPLoadLast5Min:', \
+				host.getMetricValue('load_five'))
+			print('GlueHostSMPLoadLast15Min:', \
+				host.getMetricValue('load_fifteen'))
 
 		# HostStorageDevice. Note, we group local and remote
 		# filesystems into these.
-		print 'objectclass: GlueHostStorageDevice'
+		print('objectclass: GlueHostStorageDevice')
 		try:
 			size = host.getMetricValue('disk_total')
 			bytes = float(size) * 1e6
-			print 'GlueHostStorageDeviceSize:', int(bytes)
+			print('GlueHostStorageDeviceSize:', int(bytes))
 			size = host.getMetricValue('disk_free')
 			bytes = float(size) * 1e6
-			print 'GlueHostStorageDeviceAvailableSpace:', int(bytes)
+			print('GlueHostStorageDeviceAvailableSpace:', int(bytes))
 		except:
 			pass
-		print 'GlueHostStorageDeviceType: disk'
+		print('GlueHostStorageDeviceType: disk')
 
-		print # end of record
+		print() # end of record
 		return dn
 
 
@@ -462,9 +461,9 @@ class MDS(Base):
 			if not value_list:
 				continue
 
-			values = string.join(value_list,"-")
+			values = "-".join(value_list)
 
-			if not subclusters.has_key(values):
+			if values not in subclusters:
 				subclusters[values] = []
 			subclusters[values].append(host)
 
