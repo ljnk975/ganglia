@@ -123,7 +123,7 @@ import os
 import sys
 import syslog
 import time
-import urllib
+import urllib.request, urllib.parse, urllib.error
 
 
 class Journalist:
@@ -159,7 +159,7 @@ class Journalist:
 
 		link = '%s/ganglia/?c=%s&amp;h=%s' \
 			% (cluster.getUrl(),
-			urllib.quote(cluster.getName()),
+			urllib.parse.quote(cluster.getName()),
 			host.getName())
 
 		if physical:
@@ -171,17 +171,17 @@ class Journalist:
 	def debug(self, msg):
 		mesg = "gevent debug: %s" % (msg)
 		syslog.syslog(mesg)
-		print mesg
+		print(mesg)
 
 	def info(self,msg):
 		mesg = "gevent info: %s" % (msg)
 		syslog.syslog(mesg)
-		print mesg
+		print(mesg)
 
 	def warning(self, msg):
 		mesg = "gevent warning: %s" % (msg)
 		syslog.syslog(syslog.LOG_WARNING, mesg)
-		print mesg
+		print(mesg)
 
 
 	def uptime(self, seconds):
@@ -224,7 +224,7 @@ class Journalist:
 		    +'   <pubDate>%s</pubDate>\n' % date
 		    +'  </item>\n')
 
-		print s
+		print(s)
 
   		self.recordItem(id, s)
 

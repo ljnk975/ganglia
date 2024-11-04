@@ -163,7 +163,7 @@ class GangliaNews(rocks.app.Application):
 		rocks.app.Application.parseArg(self,c)
 		key,val = c
 		if key == '--hello':
-			print "Hi there"
+			print("Hi there")
 
 
 	def getTime(self):
@@ -209,7 +209,7 @@ class GangliaNews(rocks.app.Application):
 				# classes.
 				events = initEvents()
 
-				if type(events) == types.TupleType:
+				if type(events) == tuple:
 					for event in events:
 						self.register(event)
 				else:
@@ -223,7 +223,7 @@ class GangliaNews(rocks.app.Application):
 	def register(self, newsclass):
 		"Register a news event."
 
-		if type(newsclass) == types.ClassType:
+		if type(newsclass) == type:
 			journalist = newsclass(self)
 			name = journalist.name()
 			if name:
@@ -240,16 +240,16 @@ class GangliaNews(rocks.app.Application):
 		h = open(os.path.join(self.basedir, 'header.rss'), 'w')
 		h.write(header)
 		h.close()
-		print header
+		print(header)
 
-		for j in self.journalists.values():
+		for j in list(self.journalists.values()):
 			j.run()
 
 		footer = self.rssfooter()
 		f = open(os.path.join(self.basedir, 'footer.rss'), 'w')
 		f.write(footer)
 		f.close()
-		print footer
+		print(footer)
 
 
 	def rssheader(self):
