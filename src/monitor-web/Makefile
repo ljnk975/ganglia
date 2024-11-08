@@ -71,7 +71,7 @@ include Rules.mk
 
 
 build:
-	gunzip -c $(ARCHIVE)-$(VERSION).tar.gz | $(TAR) -xf -
+	gunzip -c $(VERSION).tar.gz | $(TAR) -xf -
 
 
 install::

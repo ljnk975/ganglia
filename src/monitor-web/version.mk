@@ -1,5 +1,5 @@
 NAME		= ganglia-monitor-web
-VERSION		= 3.7.2
+VERSION		= 3.7.6
 RELEASE		= 0
 ARCHIVE		= ganglia-web
 RPM.FILES	= \

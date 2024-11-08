@@ -9,3 +9,4 @@ bb245ac68cda59ed469bd6eadf84a3553a13e833  src/phpSysInfo/phpsysinfo-3.1.8.tar.gz
 5ea23da8e5b85da53216dd7c742c8154e7aa576e  src/monitor-core/ganglia-3.7.2.tar.gz  0B0LD0shfkvCRdlVGeVlJcHBBQkE
 c19f0446f1bfea71a8482d640ea0bfd5bdda788d  src/monitor-web/ganglia-web-3.7.2.tar.gz 0B0LD0shfkvCRenJiRTBoYl9RbDA
 ca57ca89357ddd4fb3e608f0b457c88546b03cf1  src/phpSysInfo/phpsysinfo-3.2.7.tar.gz 0B0LD0shfkvCRQV9zTkdFT0lmemM
+0000000000000000000000000000000000000000  src/monitor-web/3.7.6.tar.gz 0000000000000000000000000000 https://github.com ganglia/ganglia-web/archive/refs/tags
