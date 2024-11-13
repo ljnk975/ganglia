@@ -19,3 +19,138 @@ diff -ruNa ganglia-3.7.2.org/configure ganglia-3.7.2.new/configure
      if test -f "$PyEXEC_INSTALLDIR/include/python/Python.h"; then
        PYTHON_INCLUDES="-I$PyEXEC_INSTALLDIR/include/python"
      else
+
+diff -ruNa ganglia-3.7.2.org/gmond/modules/python/mod_python.c ganglia-3.7.2.new/gmond/modules/python/mod_python.c
+--- ganglia-3.7.2.org/gmond/modules/python/mod_python.c	2015-07-02 02:49:35.000000000 +0700
++++ ganglia-3.7.2.new/gmond/modules/python/mod_python.c	2024-11-13 11:38:21.527003406 +0700
+@@ -49,16 +49,6 @@
+ #include <sys/stat.h>
+ 
+ /*
+- * Backward compatibility for 2.1 to 2.4
+- */
+-#if PY_MINOR_VERSION < 5
+-#define Py_ssize_t int
+-#if PY_MINOR_VERSION < 3
+-#define PyInt_AsUnsignedLongMask PyInt_AsLong
+-#endif
+-#endif
+-
+-/*
+  * Declare ourselves so the configuration routines can find and know us.
+  * We'll fill it in at the end of the module.
+  */
+@@ -120,12 +110,8 @@
+         long v = PyLong_AsLong(dv);
+         snprintf(bfr, len, "%ld", v);
+     }
+-    else if (PyInt_Check(dv)) {
+-        long v = PyInt_AsLong(dv);
+-        snprintf(bfr, len, "%ld", v);
+-    }
+-    else if (PyString_Check(dv)) {
+-        char* v = PyString_AsString(dv);
++    else if (PyUnicode_Check(dv)) {
++        char* v = PyUnicode_AsUTF8(dv);
+         snprintf(bfr, len, "%s", v);
+     }
+     else if (PyFloat_Check(dv)) {
+@@ -166,15 +152,15 @@
+ get_python_uint_value(PyObject* dv, unsigned int* pint)
+ {
+     int cc = 1;
+-    if (PyInt_Check(dv) || PyLong_Check(dv)) {
+-        unsigned long v = PyInt_AsUnsignedLongMask(dv);
++    if (PyLong_Check(dv)) {
++        unsigned long v = PyLong_AsUnsignedLongMask(dv);
+         *pint = (unsigned int)v;
+     }
+-    else if (PyString_Check(dv)) {
++    else if (PyUnicode_Check(dv)) {
+         /* Convert from string to int */
+         unsigned long tid;
+         char *endptr;
+-        char* p = PyString_AsString(dv);
++        char* p = PyUnicode_AsUTF8(dv);
+         tid = strtoul(p, &endptr, 10);
+         if(endptr == p || *endptr)
+             cc = -1;    /* Invalid numeric format */
+@@ -195,15 +181,15 @@
+         long v = PyLong_AsLong(dv);
+         *pint = (int)v;
+     }
+-    else if (PyInt_Check(dv)) {
+-        long v = PyInt_AsLong(dv);
++    else if (PyLong_Check(dv)) {
++        long v = PyLong_AsLong(dv);
+         *pint = (int)v;
+     }
+-    else if (PyString_Check(dv)) {
++    else if (PyUnicode_Check(dv)) {
+         /* Convert from string to int */
+         long tid;
+         char *endptr;
+-        char* p = PyString_AsString(dv);
++        char* p = PyUnicode_AsUTF8(dv);
+         tid = strtol(p, &endptr, 10);
+         if(endptr == p || *endptr)
+             cc = -1;    /* Invalid numeric format */
+@@ -247,15 +233,11 @@
+         long v = PyLong_AsLong(dv);
+         *pnum = (double)v;
+     }
+-    else if (PyInt_Check(dv)) {
+-        long v = PyInt_AsLong(dv);
+-        *pnum = (double)v;
+-    }
+-    else if (PyString_Check(dv)) {
++    else if (PyUnicode_Check(dv)) {
+         /* Convert from string to int */
+         double tid;
+         char *endptr;
+-        char* p = PyString_AsString(dv);
++        char* p = PyUnicode_AsUTF8(dv);
+         tid = strtod(p, &endptr);
+         if(endptr == p || *endptr)
+             cc = -1;    /* Invalid format for double */
+@@ -518,7 +500,7 @@
+             param = cfg_getnsec(pymodule, "param", k);
+             name = apr_pstrdup(pool, param->title);
+             value = apr_pstrdup(pool, cfg_getstr(param, "value"));
+-            pyvalue = PyString_FromString(value);
++            pyvalue = PyUnicode_FromString(value);
+             if (name && pyvalue) {
+                 PyDict_SetItemString(params_dict, name, pyvalue);
+                 Py_DECREF(pyvalue);
+@@ -540,6 +522,18 @@
+     {NULL, NULL, 0, NULL}
+ };
+ 
++static struct PyModuleDef GangliaModule = {
++    PyModuleDef_HEAD_INIT,
++    "ganglia",
++    NULL,
++    -1,
++    GangliaMethods,
++    NULL,
++    NULL,
++    NULL,
++    NULL
++};
++
+ static int pyth_metric_init (apr_pool_t *p)
+ {
+     DIR *dp;
+@@ -584,10 +578,10 @@
+ 
+     /* Set up the python path to be able to load module from our module path */
+     Py_Initialize();
+-    Py_InitModule("ganglia", GangliaMethods);
++    PyModule_Create(&GangliaModule);
+ 
+     PyObject *sys_path = PySys_GetObject("path");
+-    PyObject *addpath = PyString_FromString(path);
++    PyObject *addpath = PyUnicode_FromString(path);
+     PyList_Append(sys_path, addpath);
+ 
+     PyEval_InitThreads();
