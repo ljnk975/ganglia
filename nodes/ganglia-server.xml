@@ -321,7 +321,7 @@
 
 ln -s /opt/ganglia/sbin/gmetad /usr/sbin/gmetad
 
-mkdir -p /etc/ganglia
+mkdir -p /etc/ganglia/rrds
 
 /usr/bin/chown nobody.nobody /var/lib/ganglia/rrds
 
