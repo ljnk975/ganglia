@@ -1,0 +1,21 @@
+diff -ruNa ganglia-3.7.2.org/configure ganglia-3.7.2.new/configure
+--- ganglia-3.7.2.org/configure	2015-07-02 02:49:35.000000000 +0700
++++ ganglia-3.7.2.new/configure	2024-11-13 09:23:56.294901776 +0700
+@@ -12371,14 +12371,14 @@
+     # find out python version
+     { $as_echo "$as_me:${as_lineno-$LINENO}: checking Python version" >&5
+ $as_echo_n "checking Python version... " >&6; }
+-    PyVERSION=`$PYTHON_BIN -c 'import sys; print sys.version[:3]'`
+-    PyMAJVERSION=`$PYTHON_BIN -c 'import sys; print sys.version[:1]'`
++    PyVERSION=`$PYTHON_BIN -c 'import sys; print(sys.version[:3])'`
++    PyMAJVERSION=`$PYTHON_BIN -c 'import sys; print(sys.version[:1])'`
+     { $as_echo "$as_me:${as_lineno-$LINENO}: result: $PyVERSION" >&5
+ $as_echo "$PyVERSION" >&6; }
+     PYTHON_VERSION=$PyVERSION
+ 
+ 
+-    PyEXEC_INSTALLDIR=`$PYTHON_BIN -c "import sys; print sys.exec_prefix"`
++    PyEXEC_INSTALLDIR=`$PYTHON_BIN -c "import sys; print(sys.exec_prefix)"`
+     if test -f "$PyEXEC_INSTALLDIR/include/python/Python.h"; then
+       PYTHON_INCLUDES="-I$PyEXEC_INSTALLDIR/include/python"
+     else
