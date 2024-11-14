@@ -132,7 +132,6 @@
 #
 
 import gmon.ganglia
-import string
 import types
 import sys
 
