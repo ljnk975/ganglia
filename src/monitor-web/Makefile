@@ -72,7 +72,10 @@ include Rules.mk
 
 build:
 	gunzip -c $(VERSION).tar.gz | $(TAR) -xf -
-
+	cd $(ARCHIVE)-$(VERSION);				\
+	if [ -f ../$(ARCHIVE)-$(VERSION).patch ]; then	\
+		patch -p1 < ../$(ARCHIVE)-$(VERSION).patch;\
+	fi;						\
 
 install::
 	mkdir -p $(ROOT)/$(PKGROOT)

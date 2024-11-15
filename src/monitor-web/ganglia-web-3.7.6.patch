@@ -1,0 +1,260 @@
+diff -ru ganglia-web-3.7.6.org/api/host.php ganglia-web-3.7.6.new/api/host.php
+--- ganglia-web-3.7.6.org/api/host.php	2024-11-15 09:40:39.496091873 +0700
++++ ganglia-web-3.7.6.new/api/host.php	2024-11-15 09:43:32.958094059 +0700
+@@ -87,7 +87,7 @@
+     $reports["excluded_reports"] = array_unique($reports["excluded_reports"]);
+     $additional_cluster_img_html_args = array();
+     $additional_cluster_img_html_args['h'] = $hostname;
+-    $additional_cluster_img_html_args['st'] = $cluster[LOCALTIME];
++    $additional_cluster_img_html_args['st'] = $cluster['LOCALTIME'];
+     $additional_cluster_img_html_args['m'] = $metricname;
+     $additional_cluster_img_html_args['r'] = $range;
+     $additional_cluster_img_html_args['s'] = $sort;
+@@ -152,7 +152,7 @@
+       $graph_arguments['z'] = $size;
+       $graph_arguments['jr'] = $jobrange;
+       $graph_arguments['js'] = $jobstart;
+-      $graph_arguments['st'] = $cluster[LOCALTIME];
++      $graph_arguments['st'] = $cluster['LOCALTIME'];
+       # Adding units to graph 2003 by Jason Smith <smithj4@bnl.gov>.
+       if ($v['UNITS']) {
+         $graph_arguments['vl'] = $metrics[$cluster_url]['UNITS'];
+diff -ru ganglia-web-3.7.6.org/cluster_view.php ganglia-web-3.7.6.new/cluster_view.php
+--- ganglia-web-3.7.6.org/cluster_view.php	2024-11-15 09:40:39.497091873 +0700
++++ ganglia-web-3.7.6.new/cluster_view.php	2024-11-15 09:43:52.962094311 +0700
+@@ -372,7 +372,7 @@
+   $overview["cluster_load"] = join(", ", $cluster_load);
+ 
+   $avg_cpu_num = find_avg($clustername, "", "cpu_num");
+-  if ($avg_cpu_num == 0)
++  if ((float)$avg_cpu_num == 0)
+     $avg_cpu_num = 1;
+   $cluster_util =
+     sprintf("%.0f%%",
+diff -ru ganglia-web-3.7.6.org/dwoo/Dwoo/Core.php ganglia-web-3.7.6.new/dwoo/Dwoo/Core.php
+--- ganglia-web-3.7.6.org/dwoo/Dwoo/Core.php	2024-11-15 09:40:39.500091873 +0700
++++ ganglia-web-3.7.6.new/dwoo/Dwoo/Core.php	2024-11-15 09:43:32.958094059 +0700
+@@ -1250,7 +1250,7 @@
+         }
+         unset($varstr);
+ 
+-        while (list($k, $sep) = each($m[1])) {
++        foreach($m[1] as $k => $sep){
+             if ($sep === '.' || $sep === '[' || $sep === '') {
+                 // strip enclosing quotes if present
+                 $m[2][$k] = preg_replace('#^(["\']?)(.*?)\1$#', '$2', $m[2][$k]);
+@@ -1425,7 +1425,7 @@
+             $cur = $this->scope;
+         }
+ 
+-        while (list($k, $sep) = each($m[1])) {
++        foreach($m[1] as $k => $sep){
+             if ($sep === '.' || $sep === '[' || $sep === '') {
+                 if ((is_array($cur) || $cur instanceof ArrayAccess) && isset($cur[$m[2][$k]])) {
+                     $cur = $cur[$m[2][$k]];
+@@ -1470,7 +1470,7 @@
+             $cur =& $this->scope;
+             $last = array(array_pop($m[1]), array_pop($m[2]));
+ 
+-            while (list($k, $sep) = each($m[1])) {
++            foreach($m[1] as $k => $sep){
+                 if ($sep === '.' || $sep === '[' || $sep === '') {
+                     if (is_array($cur) === false) {
+                         $cur = array();
+diff -ru ganglia-web-3.7.6.org/dwoo/Dwoo/Data.php ganglia-web-3.7.6.new/dwoo/Dwoo/Data.php
+--- ganglia-web-3.7.6.org/dwoo/Dwoo/Data.php	2024-11-15 09:40:39.500091873 +0700
++++ ganglia-web-3.7.6.new/dwoo/Dwoo/Data.php	2024-11-15 09:43:32.958094059 +0700
+@@ -71,7 +71,7 @@
+ 	public function mergeData(array $data)
+ 	{
+ 		$args = func_get_args();
+-		while (list(,$v) = each($args)) {
++		foreach($args as $v){
+ 			if (is_array($v)) {
+ 				$this->data = array_merge($this->data, $v);
+ 			}
+@@ -90,7 +90,7 @@
+ 	{
+ 		if (is_array($name)) {
+ 			reset($name);
+-			while (list($k,$v) = each($name))
++			foreach($name as $k => $v)
+ 				$this->data[$k] = $v;
+ 		} else {
+ 			$this->data[$name] = $val;
+diff -ru ganglia-web-3.7.6.org/dwoo/plugins/builtin/blocks/textformat.php ganglia-web-3.7.6.new/dwoo/plugins/builtin/blocks/textformat.php
+--- ganglia-web-3.7.6.org/dwoo/plugins/builtin/blocks/textformat.php	2024-11-15 09:40:39.501091873 +0700
++++ ganglia-web-3.7.6.new/dwoo/plugins/builtin/blocks/textformat.php	2024-11-15 09:43:32.958094059 +0700
+@@ -67,7 +67,7 @@
+ 		// gets paragraphs
+ 		$pgs = explode("\n", str_replace(array("\r\n", "\r"), "\n", $this->buffer));
+ 
+-		while (list($i,) = each($pgs)) {
++		foreach($pgs as $i){
+ 			if (empty($pgs[$i])) {
+ 				continue;
+ 			}
+diff -ru ganglia-web-3.7.6.org/dwoo/plugins/builtin/functions/capitalize.php ganglia-web-3.7.6.new/dwoo/plugins/builtin/functions/capitalize.php
+--- ganglia-web-3.7.6.org/dwoo/plugins/builtin/functions/capitalize.php	2024-11-15 09:40:39.501091873 +0700
++++ ganglia-web-3.7.6.new/dwoo/plugins/builtin/functions/capitalize.php	2024-11-15 09:43:32.958094059 +0700
+@@ -25,7 +25,7 @@
+ 	} else {
+ 		$bits = explode(' ', (string) $value);
+ 		$out = '';
+-		while (list(,$v) = each($bits)) {
++		foreach($bits as $v){
+ 			if (preg_match('#^[^0-9]+$#', $v)) {
+ 				$out .=	' '.mb_convert_case($v, MB_CASE_TITLE, $dwoo->getCharset());
+ 			} else {
+diff -ru ganglia-web-3.7.6.org/ganglia.php ganglia-web-3.7.6.new/ganglia.php
+--- ganglia-web-3.7.6.org/ganglia.php	2024-11-15 09:40:39.502091873 +0700
++++ ganglia-web-3.7.6.new/ganglia.php	2024-11-15 09:43:52.963094311 +0700
+@@ -350,7 +350,7 @@
+       }
+ 
+    if ($debug) print "<br/>DEBUG: Creating parser\n";
+-   if ( isset($context) && is_array($context) && isset($SKIP_GMETAD_CONTEXTS) && is_array($SKIP_GMETAD_CONTEXTS) && in_array($context, $SKIP_GMETAD_CONTEXTS) ) {
++   if ( is_array($SKIP_GMETAD_CONTEXTS) && in_array($context, $SKIP_GMETAD_CONTEXTS) ) {
+       return TRUE;
+    }
+    $parser = xml_parser_create();
+diff -ru ganglia-web-3.7.6.org/get_ganglia.php ganglia-web-3.7.6.new/get_ganglia.php
+--- ganglia-web-3.7.6.org/get_ganglia.php	2024-11-15 09:40:39.503091873 +0700
++++ ganglia-web-3.7.6.new/get_ganglia.php	2024-11-15 09:43:52.963094311 +0700
+@@ -7,7 +7,7 @@
+ 
+ # If we are in compare_hosts, views and decompose_graph context we shouldn't attempt
+ # any connections to the gmetad
+-if (! in_array($context, $SKIP_GMETAD_CONTEXTS) ) {
++if (! ( is_array($SKIP_GMETAD_CONTEXTS) && in_array($context, $SKIP_GMETAD_CONTEXTS) ) ) {
+    if (! Gmetad($conf['ganglia_ip'], $conf['ganglia_port']) )
+       {
+          print "<H4>There was an error collecting ganglia data ".
+diff -ru ganglia-web-3.7.6.org/graph.php ganglia-web-3.7.6.new/graph.php
+--- ganglia-web-3.7.6.org/graph.php	2024-11-15 09:40:39.503091873 +0700
++++ ganglia-web-3.7.6.new/graph.php	2024-11-15 09:43:52.963094311 +0700
+@@ -1552,7 +1552,7 @@
+ 
+ // Fix from Phil Radden, but step is not always 15 anymore.
+ if ($range == "month")
+-  $rrdtool_graph['end'] = floor($rrdtool_graph['end'] / 672) * 672;
++  $rrdtool_graph['end'] = floor((int)$rrdtool_graph['end'] / 672) * 672;
+ 
+ ///////////////////////////////////////////////////////////////////////////////
+ // Are we generating aggregate graphs
+diff -ru ganglia-web-3.7.6.org/host_view.php ganglia-web-3.7.6.new/host_view.php
+--- ganglia-web-3.7.6.org/host_view.php	2024-11-15 09:40:39.503091873 +0700
++++ ganglia-web-3.7.6.new/host_view.php	2024-11-15 09:43:32.958094059 +0700
+@@ -329,7 +329,7 @@
+ 
+ $baseGraphArgs = "c=$cluster_url&amp;h=" . $user['hostname']
+   . "&amp;r=" . $user['range'] . "&amp;z=$size&amp;jr=$jobrange"
+-  . "&amp;js=$jobstart&amp;st=$cluster[LOCALTIME]";
++  . "&amp;js=$jobstart&amp;st=" . $cluster['LOCALTIME'];
+ if ($user['cs'])
+   $baseGraphArgs .= "&amp;cs=" . rawurlencode($user['cs']);
+ if ($user['ce'])
+diff -ru ganglia-web-3.7.6.org/lib/GangliaAuth.php ganglia-web-3.7.6.new/lib/GangliaAuth.php
+--- ganglia-web-3.7.6.org/lib/GangliaAuth.php	2024-11-15 09:40:39.505091874 +0700
++++ ganglia-web-3.7.6.new/lib/GangliaAuth.php	2024-11-15 09:43:32.958094059 +0700
+@@ -94,7 +94,7 @@
+   }
+ 
+   protected function getMagicQuotesGpc() {
+-    return get_magic_quotes_gpc();
++    return false;
+   }
+ }
+ ?>
+diff -ru ganglia-web-3.7.6.org/Makefile ganglia-web-3.7.6.new/Makefile
+--- ganglia-web-3.7.6.org/Makefile	2024-11-15 09:40:39.496091873 +0700
++++ ganglia-web-3.7.6.new/Makefile	2024-11-15 09:43:52.962094311 +0700
+@@ -30,7 +30,7 @@
+ ##########################################################
+ 
+ # Gweb version
+-GWEB_VERSION = 3.7.5
++GWEB_VERSION = 3.7.7
+ 
+ DIST_NAME = ganglia-web
+ DIST_DIR = $(DIST_NAME)-$(GWEB_VERSION)
+diff -ru ganglia-web-3.7.6.org/meta_view.php ganglia-web-3.7.6.new/meta_view.php
+--- ganglia-web-3.7.6.org/meta_view.php	2024-11-15 09:40:39.506091874 +0700
++++ ganglia-web-3.7.6.new/meta_view.php	2024-11-15 09:43:52.963094311 +0700
+@@ -119,7 +119,7 @@
+ 
+       $clusname = $source == $self ? '' : $source;
+       $avg_cpu_num = find_avg($clusname, "", "cpu_num");
+-      if ($avg_cpu_num == 0) $avg_cpu_num = 1;
++      if ((float)$avg_cpu_num == 0) $avg_cpu_num = 1;
+       $cluster_util = sprintf("%.0f", ((double) find_avg($clusname, "", "load_one") / $avg_cpu_num ) * 100);
+ 
+       $sources[$source]["name"] = $name;
+diff -ru ganglia-web-3.7.6.org/metric_group_view.php ganglia-web-3.7.6.new/metric_group_view.php
+--- ganglia-web-3.7.6.org/metric_group_view.php	2024-11-15 09:40:39.506091874 +0700
++++ ganglia-web-3.7.6.new/metric_group_view.php	2024-11-15 09:43:32.959094059 +0700
+@@ -105,7 +105,7 @@
+ 
+ $baseGraphArgs = "c=$cluster_url&amp;h=$hostname"
+   . "&amp;r=$range&amp;z=$size&amp;jr=$jobrange"
+-  . "&amp;js=$jobstart&amp;st=$cluster[LOCALTIME]";
++  . "&amp;js=$jobstart&amp;st=$cluster['LOCALTIME']";
+ if ($cs)
+   $baseGraphArgs .= "&amp;cs=" . rawurlencode($cs);
+ if ($ce)
+diff -ru ganglia-web-3.7.6.org/mobile_helper.php ganglia-web-3.7.6.new/mobile_helper.php
+--- ganglia-web-3.7.6.org/mobile_helper.php	2024-11-15 09:40:39.506091874 +0700
++++ ganglia-web-3.7.6.new/mobile_helper.php	2024-11-15 09:43:52.963094311 +0700
+@@ -266,9 +266,9 @@
+   } else if (isset($reports[$metric_name]) and $reports[$metric])
+     continue;
+   else {
+-    $metric_graphargs = "c=".rawurlencode($clustername)."&amp;h=".rawurlencode($hostname)."&amp;v=".rawurlencode($metric_attributes[VAL])
++    $metric_graphargs = "c=".rawurlencode($clustername)."&amp;h=".rawurlencode($hostname)."&amp;v=".rawurlencode($metric_attributes['VAL'])
+       ."&amp;m=$metric_name&amp;r=".rawurlencode($range)."&amp;z=$size&amp;jr=$jobrange"
+-      ."&amp;js=$jobstart&amp;st=$cluster[LOCALTIME]";
++      ."&amp;js=$jobstart&amp;st=$cluster['LOCALTIME']";
+     if ($cs)
+        $metric_graphargs .= "&amp;cs=" . rawurlencode($cs);
+     if ($ce)
+Only in ganglia-web-3.7.6.new: mobile_helper.php.orig
+diff -ru ganglia-web-3.7.6.org/physical_view.php ganglia-web-3.7.6.new/physical_view.php
+--- ganglia-web-3.7.6.org/physical_view.php	2024-11-15 09:40:39.506091874 +0700
++++ ganglia-web-3.7.6.new/physical_view.php	2024-11-15 09:43:32.959094059 +0700
+@@ -99,7 +99,7 @@
+    else {
+       ksort($racks);
+       reset($racks);
+-      while (list($rack,) = each($racks)) {
++      foreach($racks as $rack){
+          # In our convention, y=0 is close to the floor. (Easier to wire up)
+          krsort($racks[$rack]);
+       }
+diff -ru ganglia-web-3.7.6.org/pie.php ganglia-web-3.7.6.new/pie.php
+--- ganglia-web-3.7.6.org/pie.php	2024-11-15 09:40:39.506091874 +0700
++++ ganglia-web-3.7.6.new/pie.php	2024-11-15 09:43:52.963094311 +0700
+@@ -276,7 +276,11 @@
+ 
+       $x; //PHPCS
+       $y; //PHPCS
+-      $pie_count = count( $angles );
++      if is_null( $angles ) {
++        $pie_count = 0;
++      } else {
++        $pie_count = count( $angles );
++      }
+       $PIE_THICKNESS = ($this->diameter * 0.075);
+ 
+       for( $j = ($this->center_y+$PIE_THICKNESS); $j > $this->center_y; $j-- ) {
+diff -ru ganglia-web-3.7.6.org/templates/default/footer.tpl ganglia-web-3.7.6.new/templates/default/footer.tpl
+--- ganglia-web-3.7.6.org/templates/default/footer.tpl	2024-11-15 09:40:39.507091874 +0700
++++ ganglia-web-3.7.6.new/templates/default/footer.tpl	2024-11-15 09:43:52.963094311 +0700
+@@ -92,7 +92,7 @@
+ <div align="center" class="footer" style="font-size:small;clear:both;" {if $hide_footer} style="visibility:hidden;display:none;" {/if}>
+ <hr />
+ Ganglia Web Frontend version {$webfrontend_version}
+-<a href="http://ganglia.sourceforge.net/downloads.php?component=ganglia-webfrontend&amp;version={$webfrontend_version}">Check for Updates.</a><br />
++<a href="https://github.com/ganglia/ganglia-web" target="_blank">Check for Updates.</a><br />
+ 
+ Ganglia Web Backend <i>({$webbackend_component})</i> version {$webbackend_version}
+ <a href="http://ganglia.sourceforge.net/downloads.php?component={$webbackend_component}&amp;version={$webbackend_version}">Check for Updates.</a><br />

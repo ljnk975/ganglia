@@ -1,6 +1,6 @@
 diff -ru ganglia-3.7.2.org/configure ganglia-3.7.2.new/configure
---- ganglia-3.7.2.org/configure	2015-07-02 02:49:35.000000000 +0700
-+++ ganglia-3.7.2.new/configure	2024-11-13 09:23:56.294901776 +0700
+--- ganglia-3.7.2.org/configure	2024-11-15 08:55:59.637058104 +0700
++++ ganglia-3.7.2.new/configure	2024-11-15 09:34:52.214087497 +0700
 @@ -12371,14 +12371,14 @@
      # find out python version
      { $as_echo "$as_me:${as_lineno-$LINENO}: checking Python version" >&5
@@ -19,797 +19,1212 @@ diff -ru ganglia-3.7.2.org/configure ganglia-3.7.2.new/configure
      if test -f "$PyEXEC_INSTALLDIR/include/python/Python.h"; then
        PYTHON_INCLUDES="-I$PyEXEC_INSTALLDIR/include/python"
      else
-
-diff -ru ganglia-3.7.2.org/gmond/modules/python/mod_python.c ganglia-3.7.2.new/gmond/modules/python/mod_python.c
---- ganglia-3.7.2.org/gmond/modules/python/mod_python.c	2015-07-02 02:49:35.000000000 +0700
-+++ ganglia-3.7.2.new/gmond/modules/python/mod_python.c	2024-11-13 11:38:21.527003406 +0700
-@@ -49,16 +49,6 @@
- #include <sys/stat.h>
+diff -ru ganglia-3.7.2.org/configure.ac ganglia-3.7.2.new/configure.ac
+--- ganglia-3.7.2.org/configure.ac	2024-11-15 08:55:59.646058105 +0700
++++ ganglia-3.7.2.new/configure.ac	2024-11-15 09:28:50.333082937 +0700
+@@ -180,6 +180,10 @@
+ [  --with-libapr=PATH      Specify location for libapr-1 or full path to apr-1-config],
+ [if test x"$withval" != xno; then libapr="yes"; libaprpath="$withval"; fi])
+ 
++AC_ARG_WITH( libtirpc,
++[  --with-libtirpc=PATH    Specify location for libtirpc],
++[if test x"$withval" != xno; then libtirpc="yes"; libtirpcpath="$withval"; fi])
++
+ AC_ARG_WITH( libexpat,
+ [  --with-libexpat=DIR     Specify location for libexpat],
+ [if test x"$withval" != xno; then libexpat="yes"; libexpatpath="$withval"; fi])
+@@ -319,22 +323,17 @@
+   if test -n "$PYTHON_BIN"; then
+     # find out python version
+     AC_MSG_CHECKING(Python version)
+-    PyVERSION=`$PYTHON_BIN -c ['import sys; print sys.version[:3]'`]
+-    PyMAJVERSION=`$PYTHON_BIN -c ['import sys; print sys.version[:1]'`]
++    PyVERSION=`$PYTHON_BIN -c ['import sys; print("%s.%s%s" % (sys.version_info.major, sys.version_info.minor, sys.abiflags))'`]
++    PyMAJVERSION=`$PYTHON_BIN -c ['import sys; print(sys.version_info.major)'`]
+     AC_MSG_RESULT($PyVERSION)
+     PYTHON_VERSION=$PyVERSION
+     AC_SUBST(PYTHON_VERSION)
+-
+-    PyEXEC_INSTALLDIR=`$PYTHON_BIN -c "import sys; print sys.exec_prefix"`
+-    if test -f "$PyEXEC_INSTALLDIR/include/python/Python.h"; then
+-      PYTHON_INCLUDES="-I$PyEXEC_INSTALLDIR/include/python"
++    PyINC_DIR=`$PYTHON_BIN -c ['import sysconfig; print(sysconfig.get_paths()["include"])'`]
++    if test -f "$PyINC_DIR/Python.h"; then
++      PYTHON_INCLUDES="-I$PyINC_DIR"
+     else
+-      if test -f "$PyEXEC_INSTALLDIR/include/python$PyVERSION/Python.h"; then
+-        PYTHON_INCLUDES="-I$PyEXEC_INSTALLDIR/include/python$PyVERSION"
+-      else
+         PYTHON_INCLUDES=""
+         enable_python="no"
+-      fi
+     fi
+     AC_SUBST(PYTHON_INCLUDES)
+   else
+@@ -426,6 +425,35 @@
+ fi
+ 
+ echo
++echo Checking for tirpc
++if test x"$libtiprcpath" != x && test x"$libtirpcpath" != xyes; then
++  if test -f "$libtirpcpath" ; then
++    LIBTIRPC_INCLUDES=`$libtirpcpath --includes`
++    AC_SUBST(LIBTIRPC_INCLUDES)
++    LIBTIRPC_LIBPATH=`$libtirpcpath --link-ld`
++    LDFLAGS="$LDFLAGS -L`expr "x$LIBTIRPC_LIBPATH" : '.*-L\(.*\) '`"
++    AC_CHECK_LIB(tirpc, xdr_string,,,[`$libtirpcpath --libs`])
++  else
++    CFLAGS="$CFLAGS -I$libtirpcpath/include/tirpc"
++    LDFLAGS="$LDFLAGS -L$libtirpcpath/${LIB_SUFFIX}"
++    echo "Added -I$libtirpcpath/include to CFLAGS"
++    echo "Added -L$libtirpcpath/${LIB_SUFFIX} to LDFLAGS"
++    AC_CHECK_LIB(tirpc, xdr_string)
++  fi
++
++  if test x"$ac_cv_lib_tirpc_xdr_string" = xyes; then
++    echo "Found a suitable tirpc library"
++  else
++    echo "libtirpc not found"
++    exit 1;
++  fi
++else
++  PKG_CHECK_MODULES([LIBTIRPC],[libtirpc])
++  LDFLAGS="$LDFLAGS $LIBS $LIBTIRPC_LIBS"
++  LIBTIRPC_INCLUDES="$LIBTIRPC_CFLAGS"
++fi
++
++echo
+ echo Checking for libmemcached
+ AC_ARG_WITH( memcached,
+ [  --with-memcached        enable memcached metrics publishing],
+@@ -520,14 +548,20 @@
+   echo "Added -L$libpcrepath/${LIB_SUFFIX} to LDFLAGS"
+ fi
+ if test x"$libpcre" == xyes ; then
+-  AC_CHECK_HEADERS([pcre/pcre.h pcre.h])
+-  AC_CHECK_LIB(pcre, pcre_compile)
+-  if test x"$ac_cv_lib_pcre_pcre_compile" = xyes; then
+-    echo "Found a suitable pcre library"
+-  else
+-    echo "libpcre not found, specify --with-libpcre=no to build without PCRE support"
+-    exit 1;
+-  fi
++  AC_CHECK_HEADERS([pcre2.h], [], [], [[#define PCRE2_CODE_UNIT_WIDTH 8]])
++  LIBS="$LIBS -lpcre2-8"
++  AC_MSG_CHECKING([for pcre2_match_data_create in -lpcre2-8])
++  AC_LINK_IFELSE(
++    [AC_LANG_PROGRAM([[#define PCRE2_CODE_UNIT_WIDTH 8
++                       #include <pcre2.h>
++                     ]],
++                     [[pcre2_match_data *md;
++                       md = pcre2_match_data_create (16, NULL);]])],
++    [AC_DEFINE([HAVE_LIBPCRE], [1], [Define if the PCRE2 library is available])
++     AC_MSG_RESULT([yes])
++     AC_MSG_RESULT([Found a suitable pcre library])],
++    [AC_MSG_RESULT([no])
++     AC_MSG_FAILURE([libpcre not found, specify --with-libpcre=no to build without PCRE support], [1])])
+ else
+   echo "building without PCRE support"
+ fi
+@@ -567,7 +601,6 @@
+ echo
+ 
+ 
+-AC_CHECK_LIB(rpc, xdr_string)
+ AC_CHECK_LIB(socket, socket)
+ AC_CHECK_LIB(nsl, inet_addr)
+ AC_CHECK_LIB(nsl, gethostbyaddr_r)
+@@ -606,14 +639,6 @@
+ #endif
+ ])
+ 
+-AC_CHECK_HEADERS(rpc/types.h)
+-AC_CHECK_HEADER([rpc/xdr.h], [],
+-   [AC_MSG_ERROR([your system is missing the Sun RPC (ONC/RPC) libraries])],
+-[#ifdef HAVE_RPC_TYPES_H
+-# include <rpc/types.h>
+-#endif
+-])
+-
+ dnl ##################################################################
+ dnl Checks for typedefs.
+ dnl
+Only in ganglia-3.7.2.new: configure.ac.orig
+diff -ru ganglia-3.7.2.org/contrib/removespikes.pl ganglia-3.7.2.new/contrib/removespikes.pl
+--- ganglia-3.7.2.org/contrib/removespikes.pl	2024-11-15 08:55:59.645058105 +0700
++++ ganglia-3.7.2.new/contrib/removespikes.pl	2024-11-15 09:28:23.386082598 +0700
+@@ -97,10 +97,10 @@
+   $cdo=0;
+   if ($linea=~/^(.*)<row>/) { $tstamp=$1; }
+   if ($linea=~/(<row>.*)$/) { $tresto=$1; }
+-  if (/<v>\s\d\.\d+e.(\d+)\s<\/v>/) {
++  if (/<v>\s?\d\.\d+e.(\d+)\s?<\/v>/) {
+     @dump = split(/<\/v>/, $tresto);
+     for ($lino=0; $lino<=$#dump-1; $lino++) {   # scans DS's within each row 
+-      if ( $dump[$lino]=~/\d\.\d+e.(\d+)\s/ ) { # make sure it is a number (and not NaN)
++      if ( $dump[$lino]=~/\d\.\d+e.(\d+)\s?/ ) { # make sure it is a number (and not NaN)
+         $a=substr("0$lino",-2).":".$1;
+         $exp{$a}++;                             # store exponents
+         $tot{substr("0$lino",-2)}++;            # and keep a per DS total
+@@ -146,11 +146,11 @@
+   $cdo=0;
+   if ($linea=~/^(.*)<row>/) { $tstamp=$1; }     # Grab timestamp
+   if ($linea=~/(<row>.*)$/) { $tresto=$1; }     # grab rest-of-line :-)
+-  if (/<v>\s\d\.\d+e.(\d+)\s<\/v>/) {           # are there DS's?
++  if (/<v>\s?\d\.\d+e.(\d+)\s?<\/v>/) {           # are there DS's?
+     @dump=split(/<\/v>/, $tresto);              # split them
+     if ($linbak ne '') {
+       for ($lino=0;$lino<=$#dump-1;$lino++) {   # for each DS:
+-        if ($dump[$lino]=~/\d\.\d+e.(\d+)\s/) { # grab number (and not a NaN)
++        if ($dump[$lino]=~/\d\.\d+e.(\d+)\s?/) { # grab number (and not a NaN)
+ 	  $c=$&;
+           $a=$1*1;                              # and exponent
+           $b=substr("0$lino",-2).":$1";         # calculate the max percentage of this DS
+diff -ru ganglia-3.7.2.org/ganglia.inc ganglia-3.7.2.new/ganglia.inc
+--- ganglia-3.7.2.org/ganglia.inc	2024-11-15 08:55:59.637058104 +0700
++++ ganglia-3.7.2.new/ganglia.inc	2024-11-15 09:28:23.386082598 +0700
+@@ -1,11 +1,11 @@
+ 
+ 
+-FIXCONFIG = $(top_srcdir)/scripts/fixconfig
++FIXCONFIG = $(top_builddir)/scripts/fixconfig
+ 
+ # Unfortunately, we can't do this here with a pattern rule because
+ # that is a GNU make feature and is not fully portable
+ #%:	%.in $(FIXCONFIG)
+-#	$(FIXCONFIG) $<
++#	$(FIXCONFIG) $< $@
+ 
+ # For the moment, it is necessary to provide a rule for each file
+ # we want to generate - see the rule for ganglia-config in Makefile.am
+diff -ru ganglia-3.7.2.org/ganglia.pod ganglia-3.7.2.new/ganglia.pod
+--- ganglia-3.7.2.org/ganglia.pod	2024-11-15 08:55:59.646058105 +0700
++++ ganglia-3.7.2.new/ganglia.pod	2024-11-15 09:28:23.386082598 +0700
+@@ -1,5 +1,7 @@
+ =pod
+ 
++=encoding UTF-8
++
+ =for comment The ganglia documentation is written in POD (Plain Old Documentation) 
+ format.  If you want to edit this file but don't know the POD format, it is very
+ easy to learn.  Visit http://www.linuxgazette.com/issue73/spiel.html for a nice intro
+@@ -605,10 +607,12 @@
+   machine_type
+   mem_buffers   Amount of buffered memory                l,f
+   mem_cached    Amount of cached memory                  l,f
+-  mem_free      Amount of available memory               l,f
++  mem_free      Amount of free memory available          l,f
+   mem_shared    Amount of shared memory                  l,f
++  mem_slab      Amount of in-kernel data struct cache    l
+   mem_sreclaimable    Amount of slab reclaimable memory  l (kernel >= 2.6.19)
+-  mem_total     Amount of available memory               l,f
++  mem_available Amount of application memory available   l (kernel >= 3.14)
++  mem_total     Amount of total memory available         l,f
+   mtu           Network maximum transmission unit        l,f
+   os_name       Operating system name                    l,f
+   os_release    Operating system release (version)       l,f
+diff -ru ganglia-3.7.2.org/gmetad/export_helpers.c ganglia-3.7.2.new/gmetad/export_helpers.c
+--- ganglia-3.7.2.org/gmetad/export_helpers.c	2024-11-15 08:55:59.639058104 +0700
++++ ganglia-3.7.2.new/gmetad/export_helpers.c	2024-11-15 09:28:23.386082598 +0700
+@@ -349,10 +349,11 @@
+ 	char *prefix; 
+ 	char *suffix;
+ 	char *offset;     
++	int i;
+ 
+ 	strncpy(final, path, PATHSIZE);
+ 	strncpy(path_cp, path, PATHSIZE);
+-	for(int i=0; patrn[i].torepl != 0; i++){
++	for(i=0; patrn[i].torepl != 0; i++){
+ 		while((offset = strstr(path_cp, patrn[i].torepl)))
+ 		{
+ 			prefix=path_cp; //pointer to the beginning of path_cp (for clarity)
+diff -ru ganglia-3.7.2.org/gmetad/gmetad.c ganglia-3.7.2.new/gmetad/gmetad.c
+--- ganglia-3.7.2.org/gmetad/gmetad.c	2024-11-15 08:55:59.639058104 +0700
++++ ganglia-3.7.2.new/gmetad/gmetad.c	2024-11-15 09:28:23.386082598 +0700
+@@ -323,7 +323,7 @@
+        return 0;
+ 
+    /* Don't write a summary for metris that appears to be sFlow VM metrics */
+-   if (gmetad_config.unsummarized_sflow_vm_metrics && (p = strchr(name, '.')) != NULL && *(p+1) == 'v')
++   if (gmetad_config.unsummarized_sflow_vm_metrics && (p = strrchr(name, '.')) != NULL && *(p+1) == 'v')
+      return 0;
+ 
+    ganglia_scoreboard_inc(METS_SUMRZ_ROOT);
+@@ -341,7 +341,8 @@
+ 
+    debug_msg("Writing Root Summary data for metric %s", name);
+ 
+-   rc = write_data_to_rrd( NULL, NULL, name, sum, num, 15, 0, metric->slope);
++   rc = write_data_to_rrd( NULL, NULL, name, sum, num, 15, 0,
++      cstr_to_slope(getfield(metric->strings, metric->slope)));
+    if (rc)
+       {
+          err_msg("Unable to write meta data for metric %s to RRD", name);
+@@ -610,12 +611,12 @@
+          /* Sum the new values */
+          hash_foreach(root.authority, do_root_summary, NULL );
+ 
+-         /* summary completed */
+-         pthread_mutex_unlock(root.sum_finished);
+-
+          /* Save them to RRD */
+          hash_foreach(root.metric_summary, write_root_summary, NULL);
+ 
++         /* summary completed */
++         pthread_mutex_unlock(root.sum_finished);
++
+          /* Remember our last run */
+          now = apr_time_now();
+          last_metadata = now;  //Updating global variable
+diff -ru ganglia-3.7.2.org/gmetad/gmetad.service.in ganglia-3.7.2.new/gmetad/gmetad.service.in
+--- ganglia-3.7.2.org/gmetad/gmetad.service.in	2024-11-15 08:55:59.639058104 +0700
++++ ganglia-3.7.2.new/gmetad/gmetad.service.in	2024-11-15 09:28:23.387082598 +0700
+@@ -1,6 +1,6 @@
+ [Unit]
+ Description=Ganglia Meta Daemon
+-After=network.target
++After=network-online.target
+ 
+ [Service]
+ Type=forking
+diff -ru ganglia-3.7.2.org/gmetad/Makefile.am ganglia-3.7.2.new/gmetad/Makefile.am
+--- ganglia-3.7.2.org/gmetad/Makefile.am	2024-11-15 08:55:59.639058104 +0700
++++ ganglia-3.7.2.new/gmetad/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -11,7 +11,7 @@
+ GLDFLAGS = 
+ endif
+ 
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@
+ AM_CFLAGS = -I$(top_builddir)/lib -I$(top_builddir)/gmond -I$(top_builddir)/libmetrics -I$(top_builddir)/include $(GCFLAGS) @PROTOBUF_C_CFLAGS@
+ 
+ sbin_PROGRAMS = gmetad
+diff -ru ganglia-3.7.2.org/gmetad/process_xml.c ganglia-3.7.2.new/gmetad/process_xml.c
+--- ganglia-3.7.2.org/gmetad/process_xml.c	2024-11-15 08:55:59.639058104 +0700
++++ ganglia-3.7.2.new/gmetad/process_xml.c	2024-11-15 09:28:23.387082598 +0700
+@@ -1172,7 +1172,7 @@
+       return 0;
+ 
+    /* Don't save to RRD if this metrics appears to be an sFlow VM metrics */
+-   if (gmetad_config.unsummarized_sflow_vm_metrics && (p = strchr(name, '.')) != NULL && *(p+1) == 'v')
++   if (gmetad_config.unsummarized_sflow_vm_metrics && (p = strrchr(name, '.')) != NULL && *(p+1) == 'v')
+        return 0;
+ 
+    switch (tt->type)
+diff -ru ganglia-3.7.2.org/gmetad/rrd_helpers.c ganglia-3.7.2.new/gmetad/rrd_helpers.c
+--- ganglia-3.7.2.org/gmetad/rrd_helpers.c	2024-11-15 08:55:59.639058104 +0700
++++ ganglia-3.7.2.new/gmetad/rrd_helpers.c	2024-11-15 09:28:37.948082781 +0700
+@@ -199,7 +199,7 @@
+ static int
+ RRD_update( char *rrd, const char *sum, const char *num, unsigned int process_time )
+ {
+-   char *argv[3];
++   const char *argv[3];
+    int   argc = 3;
+    char val[128];
+ 
+@@ -235,7 +235,7 @@
+             unsigned int process_time, ganglia_slope_t slope)
+ {
+    const char *data_source_type = "GAUGE";
+-   char *argv[128];
++   const char *argv[128];
+    int  argc=0;
+    int heartbeat;
+    char s[16], start[64];
+@@ -276,8 +276,8 @@
+            heartbeat);
+    argv[argc++] = sum;
+    if (summary) {
+-      sprintf(num,"DS:num:%s:%d:U:U", 
+-              data_source_type,
++      sprintf(num,"DS:num:%s:%d:U:U",
++              "GAUGE",
+               heartbeat);
+       argv[argc++] = num;
+    }
+diff -ru ganglia-3.7.2.org/gmetad/server.c ganglia-3.7.2.new/gmetad/server.c
+--- ganglia-3.7.2.org/gmetad/server.c	2024-11-15 08:55:59.639058104 +0700
++++ ganglia-3.7.2.new/gmetad/server.c	2024-11-15 09:28:23.387082598 +0700
+@@ -68,7 +68,11 @@
+   {
+   "cpu_sintr", cpu_sintr_func, g_float},
+   {
+-  "cpu_steal", cpu_steal_func, g_uint16},
++  "cpu_steal", cpu_steal_func, g_float},
++  {
++  "cpu_guest", cpu_guest_func, g_float},
++  {
++  "cpu_gnice", cpu_gnice_func, g_float},
+   {
+   "load_one", load_one_func, g_float},
+   {
+@@ -115,6 +119,10 @@
+   #ifdef LINUX
+   "mem_sreclaimable", mem_sreclaimable_func, g_float},
+   {
++  "mem_slab", mem_slab_func, g_float},
++  {
++  "mem_available", mem_available_func, g_float},
++  {
+   #endif
+   #ifdef SOLARIS
+   "bread_sec", bread_sec_func, g_float},
+diff -ru ganglia-3.7.2.org/gmetad-python/gmetad-python.service.in ganglia-3.7.2.new/gmetad-python/gmetad-python.service.in
+--- ganglia-3.7.2.org/gmetad-python/gmetad-python.service.in	2024-11-15 08:55:59.638058104 +0700
++++ ganglia-3.7.2.new/gmetad-python/gmetad-python.service.in	2024-11-15 09:28:23.386082598 +0700
+@@ -1,6 +1,6 @@
+ [Unit]
+ Description=Ganglia Meta Daemon in Python
+-After=network.target
++After=network-online.target
+ 
+ [Service]
+ ExecStart=@bindir@/gmetad.py -f
+diff -ru ganglia-3.7.2.org/gmetric/gmetric.c ganglia-3.7.2.new/gmetric/gmetric.c
+--- ganglia-3.7.2.org/gmetric/gmetric.c	2024-11-15 08:55:59.639058104 +0700
++++ ganglia-3.7.2.new/gmetric/gmetric.c	2024-11-15 09:28:23.387082598 +0700
+@@ -113,7 +113,8 @@
+   if(args_info.group_given)
+     {
+       char *last;
+-      for (char *group = apr_strtok(args_info.group_arg, ", ", &last); group != NULL; group = apr_strtok(NULL, ", ", &last)) {
++      char *group;
++      for (group = apr_strtok(args_info.group_arg, ", ", &last); group != NULL; group = apr_strtok(NULL, ", ", &last)) {
+         Ganglia_metadata_add(gmetric, "GROUP", group);
+       }
+     }
+diff -ru ganglia-3.7.2.org/gmetric/Makefile.am ganglia-3.7.2.new/gmetric/Makefile.am
+--- ganglia-3.7.2.org/gmetric/Makefile.am	2024-11-15 08:55:59.638058104 +0700
++++ ganglia-3.7.2.new/gmetric/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -10,7 +10,7 @@
+ GLDFLAGS = 
+ endif
+ 
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@
+ 
+ AM_CFLAGS = -I../lib -I../include $(GCFLAGS)
+ 
+diff -ru ganglia-3.7.2.org/gmond/conf.pod ganglia-3.7.2.new/gmond/conf.pod
+--- ganglia-3.7.2.org/gmond/conf.pod	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/conf.pod	2024-11-15 09:28:23.387082598 +0700
+@@ -166,6 +166,10 @@
+ 
+   /usr/lib/ganglia
+ 
++The B<tags> parameter is optional, and may be used to include arbitrary
++information in various output produced by Gmond, including the XML.
++It will be included as the I<TAGS> attribute of the <HOST> XML tab.
++
+ =head2 udp_send_channel
+ 
+ You can define as many B<udp_send_channel> sections as you like within
+diff -ru ganglia-3.7.2.org/gmond/g25_config.c ganglia-3.7.2.new/gmond/g25_config.c
+--- ganglia-3.7.2.org/gmond/g25_config.c	2024-11-15 08:55:59.644058105 +0700
++++ ganglia-3.7.2.new/gmond/g25_config.c	2024-11-15 09:28:23.387082598 +0700
+@@ -373,5 +373,6 @@
+    dotconf_cleanup(configfile);
+ 
+    print_config(path, &gmond_config);
++   fclose(fp);
+    return 0;
+ }
+diff -ru ganglia-3.7.2.org/gmond/gmond.c ganglia-3.7.2.new/gmond/gmond.c
+--- ganglia-3.7.2.org/gmond/gmond.c	2024-11-15 08:55:59.640058104 +0700
++++ ganglia-3.7.2.new/gmond/gmond.c	2024-11-15 09:28:44.071082858 +0700
+@@ -38,11 +38,8 @@
+ #include <apr_version.h>
+ 
+ #ifdef HAVE_LIBPCRE
+-#if defined (HAVE_PCRE_PCRE_H)
+-#include <pcre/pcre.h>
+-#else
+-#include <pcre.h>
+-#endif
++#define PCRE2_CODE_UNIT_WIDTH 8
++#include <pcre2.h>
+ #endif
+ 
+ #include "cmdline.h"   /* generated by cmdline.sh which runs gengetopt */
+@@ -775,16 +772,15 @@
+ 
+                   if(buffer)
+                     {
+-                      /* RB: getsockopt() returns double SO_RCVBUF since kernel reserves overhead space */
++                      /* NOTE: getsockopt() returns double SO_RCVBUF on Linux for reserved overhead space */
+                       if(rx_buf_sz!=(buffer*2))
+                         {
+-                          err_msg("Error setting UDP receive buffer for port %d bind=%s to size: %d.\n",
++                          err_msg("WARNING When setting UDP receive buffer for port %d bind=%s to size: %d.\n",
+                             port, bindaddr? bindaddr: "unspecified", (apr_int32_t) buffer);
+-                          err_msg("Reported buffer size by OS: %d : does not match config setting %d.\n",
+-                            (int) (rx_buf_sz/2), (int) buffer);
+-                          err_msg("NOTE: only supported on systems that have Apache Portable Runtime library version 0.9.4 or higher.\n");
+-                          err_msg("Check Operating System (kernel) limits, change or disable buffer size. Exiting.\n");
+-                          exit(EXIT_FAILURE);
++                          err_msg("Reported raw buffer size by OS: %d : config setting %d. Unable to verify\n",
++                            (int) rx_buf_sz, (int) buffer);
++                          err_msg("NOTE: Linux will report twice the configured value.  See socket(7).\n");
++                          err_msg("Check Operating System (kernel) limits, change or disable buffer size.\n");
+                         }
+                       else
+                         { /* RB: Eureka */
+@@ -1013,34 +1009,49 @@
+ 
+   /* split out the spoofed host name and ip address so that it can
+    * be used to get the spoofed host. */
+-  if(metric_id && metric_id->spoof)
++  if(metric_id && metric_id->spoof && metric_id->host)
+     {
+-      char *spoofName;
+-      char *spoofIP;
+       int spoof_info_len;
+ 
+       spoof_info_len = strlen(metric_id->host);
+-      buff = malloc(spoof_info_len+1);
+-      strncpy(buff, metric_id->host, spoof_info_len + 1);
+-      spoofIP = buff;
+-      if( !(spoofName = strchr(buff+1,':')) ){
+-          err_msg("Incorrect format for spoof argument. exiting.\n");
+-          if (spoofIP) debug_msg("spoofIP: %s \n",spoofIP);
+-          if (buff) debug_msg("buff: %s \n",buff);
+-          if (buff) free(buff);
+-          return NULL;
+-      }
+-      *spoofName = 0;
+-      spoofName++;
+-      if(!(*spoofName)){
+-          err_msg("Incorrect format for spoof argument. exiting.\n");
+-          if (buff) free(buff);
++      /* don't bother if the host string is empty */
++      if(spoof_info_len > 0)
++        {
++          char *spoofName;
++          char *spoofIP;
++          
++          buff = malloc(spoof_info_len+1);
++          if(buff == NULL)
++            {
++              err_msg("Unable to allocate spoof argument parse buffer. exiting.\n");
++              return NULL;
++            }
++          strncpy(buff, metric_id->host, spoof_info_len + 1);
++          spoofIP = buff;
++          if( !(spoofName = strchr(buff+1,':')) ){
++              err_msg("Incorrect format for spoof argument (no colon delimiter). exiting.\n");
++              if (spoofIP) debug_msg("spoofIP: %s \n",spoofIP);
++              if (buff) debug_msg("buff: %s \n",buff);
++              if (buff) free(buff);
++              return NULL;
++          }
++          *spoofName = 0;
++          spoofName++;
++          if(!(*spoofName)){
++              err_msg("Incorrect format for spoof argument (empty hostname). exiting.\n");
++              if (buff) free(buff);
++              return NULL;
++          }
++          debug_msg(" spoofName: %s    spoofIP: %s \n",spoofName,spoofIP);
++          
++          hostname = spoofName;
++          remoteip = spoofIP;
++        }
++      else
++        {
++          err_msg("Incorrect format for spoof argument (host string empty). exiting.\n");
+           return NULL;
+-      }
+-      debug_msg(" spoofName: %s    spoofIP: %s \n",spoofName,spoofIP);
+-
+-      hostname = spoofName;
+-      remoteip = spoofIP;
++        }
+     }
+ 
+   apr_thread_mutex_lock(hosts_mutex);
+@@ -2030,13 +2041,20 @@
+   channel        = desc->client_data;
+ 
+   /* Create a context for the client connection */
+-  apr_pool_create(&client_context, global_context);
++  status = apr_pool_create(&client_context, global_context);
++  if(status != APR_SUCCESS)
++    {
++      return;
++    }
+ 
+   /* Accept the connection */
+   status = apr_socket_accept(&client, server, client_context);
+   if(status != APR_SUCCESS)
+     {
+-      goto close_accept_socket;
++      debug_msg("failed to accept");
++      /* Failed to accept, socket was not created
++       * Clear a prepared client context */
++      goto clear_client_context;
+     }
+ 
+   /* Set the timeout for writing to the client */
+@@ -2060,7 +2078,7 @@
+ 	  debug_msg("failed to allocate gzip stream");
+ 	  goto close_accept_socket;
+ 	}
+-      apr_status_t r = apr_socket_data_set(client, strm, GZIP_KEY, &zstream_destroy);
++      apr_status_t r = apr_socket_data_set(client, strm, GZIP_KEY, (int (*)(void *))&zstream_destroy);
+       if (r != APR_SUCCESS)
+ 	{
+ 	  debug_msg("failed to set socket user data");
+@@ -2144,6 +2162,7 @@
+ close_accept_socket:
+   apr_socket_shutdown(client, APR_SHUTDOWN_READ);
+   apr_socket_close(client);
++clear_client_context:
+   apr_pool_destroy(client_context);
+ }
+ 
+@@ -2298,6 +2317,7 @@
+ {
+     cfg_t *tmp;
+     int j;
++    apr_hash_t *modules_loaded = apr_hash_make(global_context);
+ 
+     tmp = cfg_getsec( config_file, "modules");
+     for (j = 0; j < cfg_size(tmp, "module"); j++) 
+@@ -2309,6 +2329,7 @@
+         apr_array_header_t *modParams_list = NULL;
+         int k, modEnabled;
+         apr_status_t merge_ret;
++        char *module_key = NULL;
+ 
+         cfg_t *module = cfg_getnsec(tmp, "module", j);
+ 
+@@ -2345,6 +2366,17 @@
+           }
+         modName = cfg_getstr(module, "name");
+         modparams = cfg_getstr(module, "params");
++
++
++        /* Check that we haven't loaded this module already, now
++         * that we've pulled the module name and path */
++        module_key = apr_pstrcat(global_context, modName, ":", modPath, NULL);
++        debug_msg("loading %s @ %s", modName, modPath);
++        if (NULL != apr_hash_get(modules_loaded, module_key, APR_HASH_KEY_STRING)) {
++            err_quit("Attempt to load module %s @ %s more than once.", modName, modPath);
++            continue;
++        }
++
+         modParams_list = apr_array_make(global_context, 2, sizeof(mmparam));
+ 
+         for (k = 0; k < cfg_size(module, "param"); k++) 
+@@ -2372,6 +2404,7 @@
+             continue;
+           }
+         debug_msg("loaded module: %s", modName);
++        apr_hash_set(modules_loaded, module_key, APR_HASH_KEY_STRING, apr_pstrdup(global_context, "true"));
+ 
+         /*
+          * Retrieve the pointer to the module structure through the module name.
+@@ -2650,10 +2683,11 @@
+ 
+           if(name_match != NULL)
+             {
+-              pcre *pcre_re;
+-              const char *pcre_err_ptr;
+-              int pcre_err_offset;
+-              int pcre_ovector[PCRE_OVECCOUNT];
++              pcre2_code *pcre_re;
++              pcre2_match_data *pcre_md;
++              int pcre_err_ptr;
++              size_t pcre_err_offset;
++              size_t *pcre_ovector;
+               int pcre_rc;
+ 
+               apr_hash_index_t *hi;
+@@ -2662,9 +2696,9 @@
+               const char *key;
+               int found = 0;
+ 
+-              if((pcre_re = pcre_compile(name_match, 0, &pcre_err_ptr, &pcre_err_offset, NULL)) == NULL)
++              if((pcre_re = pcre2_compile((PCRE2_SPTR)name_match, PCRE2_ZERO_TERMINATED, 0, &pcre_err_ptr, &pcre_err_offset, NULL)) == NULL)
+                 {
+-                  err_msg ("pcre_compile failed on %s\n", name_match);
++                  err_msg ("pcre2_compile failed on %s\n", name_match);
+                   exit (1);
+                 }
+ 
+@@ -2676,6 +2710,8 @@
+ 		  exit(EXIT_FAILURE);
+                 }
+ 
++              pcre_md = pcre2_match_data_create(PCRE_OVECCOUNT, NULL);
++
+               for(hi = apr_hash_first(p, metric_callbacks);
+                   hi;
+                   hi = apr_hash_next(hi))
+@@ -2683,17 +2719,17 @@
+                   Ganglia_metric_callback *cb;
+ 
+                   apr_hash_this(hi, (const void**)&key, NULL, &val);
+-                  if((pcre_rc = pcre_exec(pcre_re, NULL, key, strlen(key), 0, 0, pcre_ovector, PCRE_OVECCOUNT)) < 1)
++                  if((pcre_rc = pcre2_match(pcre_re, (PCRE2_SPTR)key, strlen(key), 0, 0, pcre_md, NULL)) < 1)
+                     {
+                       switch(pcre_rc)
+                         {
+-                          case PCRE_ERROR_NOMATCH:
++                          case PCRE2_ERROR_NOMATCH:
+                             break;
+                           case 0:
+                             /* output vector not big enough */
+                           default:
+                             /* unexpected error */
+-                            err_msg ("unexpected pcre_exec error\n");
++                            err_msg ("unexpected pcre2_match error\n");
+                             exit (1);
+                         }
+                     }
+@@ -2703,6 +2739,8 @@
+                       char *title_tmpl = cfg_getstr  ( metric, "title");
+                       float value_threshold = cfg_getfloat( metric, "value_threshold");
+ 
++                      pcre_ovector = pcre2_get_ovector_pointer(pcre_md);
++
+                       if(title_tmpl != NULL)
+                         {
+                           struct iovec *ptrs;
+@@ -2772,6 +2810,8 @@
+               if (!found)
+                   err_msg("Unable to find any metric information for '%s'. Possible that a module has not been loaded.\n", name_match);
+  
++              pcre2_match_data_free(pcre_md);
++              pcre2_code_free(pcre_re);
+             }
+           else
+ #endif
+@@ -2976,7 +3016,13 @@
+             name = cb->msg.Ganglia_value_msg_u.gstr.metric_id.name;
+             if (override_hostname != NULL)
+               {
+-                cb->msg.Ganglia_value_msg_u.gstr.metric_id.host = apr_pstrcat(gm_pool, (char *)( override_ip != NULL ? override_ip : override_hostname ), ":", (char *) override_hostname, NULL);
++                /* Since cb will live beyond this function call, we need to
++                 * allocate the host field from the global pool and NOT the
++                 * temporary gm_pool from the metric object.  (Note that
++                 * Ganglia_metric_callback objects are allocated from
++                 * global_context elsewhere in this file.)
++                 */
++                cb->msg.Ganglia_value_msg_u.gstr.metric_id.host = apr_pstrcat(global_context, (char *)( override_ip != NULL ? override_ip : override_hostname ), ":", (char *) override_hostname, NULL);
+                 cb->msg.Ganglia_value_msg_u.gstr.metric_id.spoof = TRUE;
+               }
+             val = apr_pstrdup(gm_pool, host_metric_value(cb->info, &(cb->msg)));
+@@ -3294,6 +3340,7 @@
+ {
+   apr_time_t now, next_collection, last_cleanup;
+   apr_pool_t *cleanup_context;
++  apr_thread_t *tcp_listener_thread = NULL;
+ 
+   gmond_argv = argv;
+ 
+@@ -3415,8 +3462,7 @@
+   /* Create TCP listener thread */
+   if(!deaf)
+     {
+-      apr_thread_t *thread;
+-      if (apr_thread_create(&thread, NULL, tcp_listener, NULL, global_context) != APR_SUCCESS)
++      if (apr_thread_create(&tcp_listener_thread, NULL, tcp_listener, NULL, global_context) != APR_SUCCESS)
+         {
+           err_msg("Failed to create TCP listener thread. Exiting.\n");
+           exit(EXIT_FAILURE);
+@@ -3477,6 +3523,16 @@
+         }
+     }
+ 
++  if(tcp_listener_thread)
++    {
++      apr_status_t status = SUCCESS;
++      if((status = apr_thread_join(&status, tcp_listener_thread)) != APR_SUCCESS)
++        {
++          char buff[512];
++          debug_msg("apr_thread_join returned unexpected status %d = %s\n", status, apr_strerror(status, buff, 511));
++        }
++    }
++
+   apr_pool_destroy(global_context);
+ 
+   if(reload_required == 1)
+Only in ganglia-3.7.2.new/gmond: gmond.c.orig
+diff -ru ganglia-3.7.2.org/gmond/gmond.service.in ganglia-3.7.2.new/gmond/gmond.service.in
+--- ganglia-3.7.2.org/gmond/gmond.service.in	2024-11-15 08:55:59.640058104 +0700
++++ ganglia-3.7.2.new/gmond/gmond.service.in	2024-11-15 09:28:23.388082598 +0700
+@@ -1,6 +1,6 @@
+ [Unit]
+ Description=Ganglia Monitor Daemon
+-After=network.target
++After=network-online.target
+ 
+ [Service]
+ Type=forking
+diff -ru ganglia-3.7.2.org/gmond/Makefile.am ganglia-3.7.2.new/gmond/Makefile.am
+--- ganglia-3.7.2.org/gmond/Makefile.am	2024-11-15 08:55:59.640058104 +0700
++++ ganglia-3.7.2.new/gmond/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -44,7 +44,7 @@
+ GCFLAGS += -DSFLOW
+ endif
+ 
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@
+ AM_CFLAGS = -I$(top_builddir)/lib -I$(top_builddir)/include/ -I$(top_builddir)/libmetrics $(GCFLAGS)
+ 
+ sbin_PROGRAMS = gmond
+diff -ru ganglia-3.7.2.org/gmond/modules/cpu/Makefile.am ganglia-3.7.2.new/gmond/modules/cpu/Makefile.am
+--- ganglia-3.7.2.org/gmond/modules/cpu/Makefile.am	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/cpu/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -25,4 +25,4 @@
+ 
+ endif
+ 
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@
+diff -ru ganglia-3.7.2.org/gmond/modules/cpu/mod_cpu.c ganglia-3.7.2.new/gmond/modules/cpu/mod_cpu.c
+--- ganglia-3.7.2.org/gmond/modules/cpu/mod_cpu.c	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/cpu/mod_cpu.c	2024-11-15 09:28:23.388082598 +0700
+@@ -58,6 +58,10 @@
+         return cpu_sintr_func();
+     case 10:
+         return cpu_steal_func();
++    case 11:
++        return cpu_guest_func();
++    case 12:
++        return cpu_gnice_func();
+     }
+ 
+     /* default case */
+@@ -78,6 +82,8 @@
+     {0, "cpu_intr",     90, GANGLIA_VALUE_FLOAT,          "%",    "both", "%.1f", UDP_HEADER_SIZE+8, "cpu_intr"},
+     {0, "cpu_sintr",    90, GANGLIA_VALUE_FLOAT,          "%",    "both", "%.1f", UDP_HEADER_SIZE+8, "cpu_sintr"},
+     {0, "cpu_steal",    90, GANGLIA_VALUE_FLOAT,          "%",    "both", "%.1f", UDP_HEADER_SIZE+8, "cpu_steal"},
++    {0, "cpu_guest",    90, GANGLIA_VALUE_FLOAT,          "%",    "both", "%.1f", UDP_HEADER_SIZE+8, "cpu_guest"},
++    {0, "cpu_gnice",    90, GANGLIA_VALUE_FLOAT,          "%",    "both", "%.1f", UDP_HEADER_SIZE+8, "cpu_gnice"},
+     {0, NULL}
+ 
+ };
+diff -ru ganglia-3.7.2.org/gmond/modules/cpu/mod_multicpu.c ganglia-3.7.2.new/gmond/modules/cpu/mod_multicpu.c
+--- ganglia-3.7.2.org/gmond/modules/cpu/mod_multicpu.c	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/cpu/mod_multicpu.c	2024-11-15 09:28:23.388082598 +0700
+@@ -76,6 +76,8 @@
+ static cpu_util *cpu_intr = NULL;
+ static cpu_util *cpu_sintr = NULL;
+ static cpu_util *cpu_steal = NULL;
++static cpu_util *cpu_guest = NULL;
++static cpu_util *cpu_gnice = NULL;
  
  /*
-- * Backward compatibility for 2.1 to 2.4
-- */
--#if PY_MINOR_VERSION < 5
--#define Py_ssize_t int
--#if PY_MINOR_VERSION < 3
--#define PyInt_AsUnsignedLongMask PyInt_AsLong
--#endif
--#endif
--
--/*
-  * Declare ourselves so the configuration routines can find and know us.
-  * We'll fill it in at the end of the module.
-  */
-@@ -120,12 +110,8 @@
-         long v = PyLong_AsLong(dv);
-         snprintf(bfr, len, "%ld", v);
-     }
--    else if (PyInt_Check(dv)) {
--        long v = PyInt_AsLong(dv);
--        snprintf(bfr, len, "%ld", v);
--    }
--    else if (PyString_Check(dv)) {
--        char* v = PyString_AsString(dv);
-+    else if (PyUnicode_Check(dv)) {
-+        char* v = PyUnicode_AsUTF8(dv);
-         snprintf(bfr, len, "%s", v);
-     }
-     else if (PyFloat_Check(dv)) {
-@@ -166,15 +152,15 @@
- get_python_uint_value(PyObject* dv, unsigned int* pint)
+  * A helper function to determine the number of cpustates in /proc/stat (MKN)
+@@ -102,6 +104,10 @@
+     ** Loop over file until next "cpu" token is found.
+     ** i=4 : Linux 2.4.x
+     ** i=7 : Linux 2.6.x
++    **
++    ** i=8 : Linux 2.6.11+
++    ** i=9 : Linux 2.6.24+
++    ** i=10: Linux 2.6.33+
+     */
+     while (strncmp(p,"cpu",3)) {
+         p = skip_token(p);
+@@ -190,7 +196,8 @@
+ static double total_jiffies_func (char *p)
  {
-     int cc = 1;
--    if (PyInt_Check(dv) || PyLong_Check(dv)) {
--        unsigned long v = PyInt_AsUnsignedLongMask(dv);
-+    if (PyLong_Check(dv)) {
-+        unsigned long v = PyLong_AsUnsignedLongMask(dv);
-         *pint = (unsigned int)v;
+     unsigned long user_jiffies, nice_jiffies, system_jiffies, idle_jiffies,
+-        wio_jiffies, irq_jiffies, sirq_jiffies, steal_jiffies;
++        wio_jiffies, irq_jiffies, sirq_jiffies, steal_jiffies,
++        guest_jiffies, gnice_jiffies;
+ 
+     user_jiffies = strtod( p, &p );
+     p = skip_whitespace(p);
+@@ -216,6 +223,10 @@
+ 
+     p = skip_whitespace(p);
+     steal_jiffies = strtod( p , &p );
++    p = skip_whitespace(p);
++    guest_jiffies = strtod( p , &p ); /* "guest" included in user already */
++    p = skip_whitespace(p);
++    gnice_jiffies = strtod( p , &p ); /* "gnice" included in nice already */
+     return user_jiffies + nice_jiffies + system_jiffies + idle_jiffies +
+         wio_jiffies + irq_jiffies + sirq_jiffies + steal_jiffies;
+ }   
+@@ -457,7 +468,58 @@
+ static g_val_t multi_cpu_steal_func (int cpu_index)
+ {
+     char *p;
+-    cpu_util *cpu = &(cpu_user[cpu_index]);
++    cpu_util *cpu = &(cpu_steal[cpu_index]);
++
++    p = update_file(&proc_stat);
++    if((proc_stat.last_read.tv_sec != cpu->stamp.tv_sec) &&
++       (proc_stat.last_read.tv_usec != cpu->stamp.tv_usec)) {
++        cpu->stamp = proc_stat.last_read;
++
++        p = find_cpu (p, cpu_index, &cpu->curr_total_jiffies);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_whitespace(p);
++        calculate_utilization (p, cpu);
++    }
++
++    return cpu->val;
++}
++
++static g_val_t multi_cpu_guest_func (int cpu_index)
++{
++    char *p;
++    cpu_util *cpu = &(cpu_guest[cpu_index]);
++
++    p = update_file(&proc_stat);
++    if((proc_stat.last_read.tv_sec != cpu->stamp.tv_sec) &&
++       (proc_stat.last_read.tv_usec != cpu->stamp.tv_usec)) {
++        cpu->stamp = proc_stat.last_read;
++
++        p = find_cpu (p, cpu_index, &cpu->curr_total_jiffies);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
++        p = skip_whitespace(p);
++        calculate_utilization (p, cpu);
++    }
++
++    return cpu->val;
++}
++
++static g_val_t multi_cpu_gnice_func (int cpu_index)
++{
++    char *p;
++    cpu_util *cpu = &(cpu_gnice[cpu_index]);
+ 
+     p = update_file(&proc_stat);
+     if((proc_stat.last_read.tv_sec != cpu->stamp.tv_sec) &&
+@@ -472,6 +534,8 @@
+         p = skip_token(p);
+         p = skip_token(p);
+         p = skip_token(p);
++        p = skip_token(p);
++        p = skip_token(p);
+         p = skip_whitespace(p);
+         calculate_utilization (p, cpu);
      }
--    else if (PyString_Check(dv)) {
-+    else if (PyUnicode_Check(dv)) {
-         /* Convert from string to int */
-         unsigned long tid;
-         char *endptr;
--        char* p = PyString_AsString(dv);
-+        char* p = PyUnicode_AsUTF8(dv);
-         tid = strtoul(p, &endptr, 10);
-         if(endptr == p || *endptr)
-             cc = -1;    /* Invalid numeric format */
-@@ -195,15 +181,15 @@
-         long v = PyLong_AsLong(dv);
-         *pint = (int)v;
-     }
--    else if (PyInt_Check(dv)) {
--        long v = PyInt_AsLong(dv);
-+    else if (PyLong_Check(dv)) {
-+        long v = PyLong_AsLong(dv);
-         *pint = (int)v;
-     }
--    else if (PyString_Check(dv)) {
-+    else if (PyUnicode_Check(dv)) {
-         /* Convert from string to int */
-         long tid;
-         char *endptr;
--        char* p = PyString_AsString(dv);
-+        char* p = PyUnicode_AsUTF8(dv);
-         tid = strtol(p, &endptr, 10);
-         if(endptr == p || *endptr)
-             cc = -1;    /* Invalid numeric format */
-@@ -247,15 +233,11 @@
-         long v = PyLong_AsLong(dv);
-         *pnum = (double)v;
-     }
--    else if (PyInt_Check(dv)) {
--        long v = PyInt_AsLong(dv);
--        *pnum = (double)v;
--    }
--    else if (PyString_Check(dv)) {
-+    else if (PyUnicode_Check(dv)) {
-         /* Convert from string to int */
-         double tid;
-         char *endptr;
--        char* p = PyString_AsString(dv);
-+        char* p = PyUnicode_AsUTF8(dv);
-         tid = strtod(p, &endptr);
-         if(endptr == p || *endptr)
-             cc = -1;    /* Invalid format for double */
-@@ -518,7 +500,7 @@
-             param = cfg_getnsec(pymodule, "param", k);
-             name = apr_pstrdup(pool, param->title);
-             value = apr_pstrdup(pool, cfg_getstr(param, "value"));
--            pyvalue = PyString_FromString(value);
-+            pyvalue = PyUnicode_FromString(value);
-             if (name && pyvalue) {
-                 PyDict_SetItemString(params_dict, name, pyvalue);
-                 Py_DECREF(pyvalue);
-@@ -540,6 +522,18 @@
+@@ -515,6 +579,10 @@
+                             "executing at the sintr level");
+     cpu_steal = init_metric (pool, metric_info, cpu_count, "multicpu_steal",
+                             "Percentage of CPU preempted by the hypervisor");
++    cpu_guest = init_metric (pool, metric_info, cpu_count, "multicpu_guest",
++                            "Percentage of CPU running a virtual CPU");
++    cpu_gnice = init_metric (pool, metric_info, cpu_count, "multicpu_gnice",
++                            "Percentage of CPU running a niced guest");
+ 
+     /* Add a terminator to the array and replace the empty static metric definition 
+         array with the dynamic array that we just created 
+@@ -574,6 +642,12 @@
+     if (strcmp(name, "multicpu_steal") == 0)
+         return multi_cpu_steal_func(index);
+ 
++    if (strcmp(name, "multicpu_guest") == 0)
++        return multi_cpu_guest_func(index);
++
++    if (strcmp(name, "multicpu_gnice") == 0)
++        return multi_cpu_gnice_func(index);
++
+     /* default case */
+     val.f = 0;
+     return val;
+diff -ru ganglia-3.7.2.org/gmond/modules/disk/Makefile.am ganglia-3.7.2.new/gmond/modules/disk/Makefile.am
+--- ganglia-3.7.2.org/gmond/modules/disk/Makefile.am	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/disk/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -11,4 +11,4 @@
+ moddisk_la_LIBADD = $(top_builddir)/libmetrics/libmetrics.la
+ endif
+ 
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@
+diff -ru ganglia-3.7.2.org/gmond/modules/example/Makefile.am ganglia-3.7.2.new/gmond/modules/example/Makefile.am
+--- ganglia-3.7.2.org/gmond/modules/example/Makefile.am	2024-11-15 08:55:59.644058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/example/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -11,7 +11,7 @@
+ EXTRA_DIST = ../conf.d/example.conf
+ endif
+ 
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@
+ 
+ install:
+ 	@echo
+diff -ru ganglia-3.7.2.org/gmond/modules/memory/Makefile.am ganglia-3.7.2.new/gmond/modules/memory/Makefile.am
+--- ganglia-3.7.2.org/gmond/modules/memory/Makefile.am	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/memory/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -12,4 +12,4 @@
+ modmem_la_LIBADD = $(top_builddir)/libmetrics/libmetrics.la
+ endif
+ 
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@
+diff -ru ganglia-3.7.2.org/gmond/modules/memory/mod_mem.c ganglia-3.7.2.new/gmond/modules/memory/mod_mem.c
+--- ganglia-3.7.2.org/gmond/modules/memory/mod_mem.c	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/memory/mod_mem.c	2024-11-15 09:28:23.388082598 +0700
+@@ -50,6 +50,10 @@
+ #ifdef LINUX
+     case 7:
+         return mem_sreclaimable_func();
++    case 8:
++        return mem_slab_func();
++    case 9:
++        return mem_available_func();
+ #endif
+ #if HPUX
+     case 7:
+@@ -79,6 +83,8 @@
+     {0, "swap_total", 1200, GANGLIA_VALUE_FLOAT, "KB", "zero", "%.0f", UDP_HEADER_SIZE+8, "Total amount of swap space displayed in KBs"},
+ #ifdef LINUX
+     {0, "mem_sreclaimable", 180, GANGLIA_VALUE_FLOAT, "KB", "both", "%.0f", UDP_HEADER_SIZE+8, "Amount of reclaimable slab memory"},
++    {0, "mem_slab",    180, GANGLIA_VALUE_FLOAT, "KB", "both", "%.0f", UDP_HEADER_SIZE+8, "Amount of in-kernel data structures cache"},
++    {0, "mem_available",    180, GANGLIA_VALUE_FLOAT, "KB", "both", "%.0f", UDP_HEADER_SIZE+8, "Estimate of how much memory is available"},
+ #endif
+ #if HPUX
+     {0, "mem_arm",     180, GANGLIA_VALUE_FLOAT, "KB", "both", "%.0f", UDP_HEADER_SIZE+8, "mem_arm"},
+diff -ru ganglia-3.7.2.org/gmond/modules/network/Makefile.am ganglia-3.7.2.new/gmond/modules/network/Makefile.am
+--- ganglia-3.7.2.org/gmond/modules/network/Makefile.am	2024-11-15 08:55:59.644058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/network/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -12,4 +12,4 @@
+ modnet_la_LIBADD = $(top_builddir)/libmetrics/libmetrics.la
+ endif
+ 
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@
+diff -ru ganglia-3.7.2.org/gmond/modules/perl/Makefile.am ganglia-3.7.2.new/gmond/modules/perl/Makefile.am
+--- ganglia-3.7.2.org/gmond/modules/perl/Makefile.am	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/perl/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -28,4 +28,4 @@
+ 	mkdir -p $(DESTDIR)$(sysconfdir)/conf.d && \
+ 	  $(INSTALL_DATA) ../conf.d/modperl.conf $(DESTDIR)$(sysconfdir)/conf.d/modperl.conf
+ 
+-INCLUDES = @APR_INCLUDES@ @PERL_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@ @PERL_INCLUDES@
+diff -ru ganglia-3.7.2.org/gmond/modules/python/Makefile.am ganglia-3.7.2.new/gmond/modules/python/Makefile.am
+--- ganglia-3.7.2.org/gmond/modules/python/Makefile.am	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/python/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -27,4 +27,4 @@
+ 	mkdir -p $(DESTDIR)$(sysconfdir)/conf.d && \
+ 	  $(INSTALL_DATA) ../conf.d/modpython.conf $(DESTDIR)$(sysconfdir)/conf.d/modpython.conf
+ 
+-INCLUDES = @APR_INCLUDES@ @PYTHON_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@ @PYTHON_INCLUDES@
+diff -ru ganglia-3.7.2.org/gmond/modules/python/mod_python.c ganglia-3.7.2.new/gmond/modules/python/mod_python.c
+--- ganglia-3.7.2.org/gmond/modules/python/mod_python.c	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/python/mod_python.c	2024-11-15 09:29:14.755083245 +0700
+@@ -29,6 +29,10 @@
+ *
+ * Author: Brad Nicholes (bnicholes novell.com)
+ *         Jon Carey (jcarey novell.com)
++*
++* Modified for Python3 support, based on code at https://docs.python.org/3.5/howto/cporting.html
++* Tom Crane (T.Crane@rhul.ac.uk), June 2024.
++*
+ ******************************************************************************/
+ 
+ #include <Python.h>
+@@ -51,12 +55,23 @@
+ /*
+  * Backward compatibility for 2.1 to 2.4
+  */
++#if PY_MAJOR_VERSION < 3
+ #if PY_MINOR_VERSION < 5
+ #define Py_ssize_t int
+ #if PY_MINOR_VERSION < 3
+ #define PyInt_AsUnsignedLongMask PyInt_AsLong
+ #endif
+ #endif
++#endif
++
++#if PY_MAJOR_VERSION >= 3
++# define PyInt_AsLong(x) (PyLong_AsLong((x)))
++# define PyInt_Check(x) (PyLong_Check((x)))
++# define PyString_Check(x) (PyUnicode_Check((x)))
++# define PyString_AsString(x) (PyUnicode_AsUTF8((x)))
++# define PyInt_AsUnsignedLongMask(x) (PyLong_AsUnsignedLongMask((x)))
++# define PyString_FromString(x) (PyUnicode_FromString((x)))
++#endif
+ 
+ /*
+  * Declare ourselves so the configuration routines can find and know us.
+@@ -540,7 +555,60 @@
      {NULL, NULL, 0, NULL}
  };
  
-+static struct PyModuleDef GangliaModule = {
-+    PyModuleDef_HEAD_INIT,
-+    "ganglia",
-+    NULL,
-+    -1,
-+    GangliaMethods,
-+    NULL,
-+    NULL,
-+    NULL,
-+    NULL
++struct module_state {
++  PyObject *error;
 +};
 +
++#if PY_MAJOR_VERSION >= 3
++#define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
++#else
++#define GETSTATE(m) (&_state)
++static struct module_state _state;
++#endif
++
++static PyObject *
++error_out(PyObject *m) {
++  struct module_state *st = GETSTATE(m);
++  PyErr_SetString(st->error, "something bad happened");
++  return NULL;
++}
++
++#if PY_MAJOR_VERSION >= 3
++
++static int ganglia_traverse(PyObject *m, visitproc visit, void *arg) {
++  Py_VISIT(GETSTATE(m)->error);
++  return 0;
++}
++
++static int ganglia_clear(PyObject *m) {
++  Py_CLEAR(GETSTATE(m)->error);
++  return 0;
++}
++
++
++static struct PyModuleDef moduledef = {
++  PyModuleDef_HEAD_INIT,
++  "ganglia",
++  NULL,
++  sizeof(struct module_state),
++  GangliaMethods,
++  NULL,
++  ganglia_traverse,
++  ganglia_clear,
++  NULL
++};
++
++#define INITERROR return NULL
++
++PyMODINIT_FUNC PyInit_metric_init(apr_pool_t *p)
++
++#else
++
++#define INITERROR return
++
  static int pyth_metric_init (apr_pool_t *p)
++#endif
++
  {
      DIR *dp;
-@@ -584,10 +578,10 @@
+     struct dirent *entry;
+@@ -563,29 +631,41 @@
+ 
+     if (!path) {
+         err_msg("[PYTHON] Missing python module path.\n");
+-        return -1;
++        INITERROR;
+     }
+ 
+     if (access(path, F_OK))
+     {
+         /* 'path' does not exist */
+         err_msg("[PYTHON] Can't open the python module path %s.\n", path);
+-        return -1;
++        INITERROR;
+     }
+ 
+     if (access(path, R_OK))
+     {
+         /* Don't have read access to 'path' */
+         err_msg("[PYTHON] Can't read from the python module path %s.\n", path);
+-        return -1;
++        INITERROR;
+     }
+ 
+     /* Init Python environment */
  
      /* Set up the python path to be able to load module from our module path */
      Py_Initialize();
 -    Py_InitModule("ganglia", GangliaMethods);
-+    PyModule_Create(&GangliaModule);
- 
+-
++#if PY_MAJOR_VERSION >= 3
++    PyObject *module = PyModule_Create(&moduledef);
++#else
++    PyObject *module = Py_InitModule("ganglia", GangliaMethods);
++#endif
++    if (module == NULL)
++        INITERROR;
++    struct module_state *st = GETSTATE(module);
++
++    st->error = PyErr_NewException("ganglia.Error", NULL, NULL);
++    if (st->error == NULL) {
++        Py_DECREF(module);
++        INITERROR;
++    }
      PyObject *sys_path = PySys_GetObject("path");
--    PyObject *addpath = PyString_FromString(path);
-+    PyObject *addpath = PyUnicode_FromString(path);
+     PyObject *addpath = PyString_FromString(path);
      PyList_Append(sys_path, addpath);
+@@ -598,7 +678,7 @@
+         /* Error: Cannot open the directory - Shouldn't happen */
+         /* Log? */
+         err_msg("[PYTHON] Can't open the python module path %s.\n", path);
+-        return -1;
++        INITERROR;
+     }
  
-     PyEval_InitThreads();
-diff -ru ganglia-3.7.2.org/contrib/check_ganglia.py ganglia-3.7.2.new/contrib/check_ganglia.py
---- ganglia-3.7.2.org/contrib/check_ganglia.py	2024-11-14 23:44:01.722617078 +0700
-+++ ganglia-3.7.2.new/contrib/check_ganglia.py	2024-11-14 23:46:42.945220916 +0700
-@@ -34,9 +34,9 @@
-       self.inhost=0
+     i = 0;
+@@ -712,9 +792,23 @@
+     memset (mi, 0, sizeof(*mi));
  
- def usage():
--  print """Usage: check_ganglia \
-+  print("""Usage: check_ganglia \
- -h|--host= -m|--metric= -w|--warning= \
---c|--critical= [-s|--server=] [-p|--port=] """
-+-c|--critical= [-s|--server=] [-p|--port=] """)
-   sys.exit(3)
+     python_module.metrics_info = (Ganglia_25metric *)metric_info->elts;
++#if PY_MAJOR_VERSION >= 3
++    return module;
++#else
+     return 0;
++#endif
+ }
  
- if __name__ == "__main__":
-@@ -53,8 +53,8 @@
-       "h:m:w:c:s:p:",
-       ["host=", "metric=", "warning=", "critical=", "server=", "port="],
-       )
--  except getopt.GetoptError, err:
--    print "check_gmond:", str(err)
-+  except getopt.GetoptError as err:
-+    print("check_gmond:", str(err))
-     usage()
-     sys.exit(3)
++#if PY_MAJOR_VERSION >= 3
++static int pyth_metric_init (apr_pool_t *p) {
++  if (PyInit_metric_init(p) == NULL) {
++    return 1;
++  } else {
++    return 0;
++  }
++}
++#endif
++
+ static apr_status_t pyth_metric_cleanup ( void *data)
+ {
+     PyObject *pcleanup, *pobj;
+diff -ru ganglia-3.7.2.org/gmond/modules/status/Makefile.am ganglia-3.7.2.new/gmond/modules/status/Makefile.am
+--- ganglia-3.7.2.org/gmond/modules/status/Makefile.am	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/status/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -11,4 +11,4 @@
+ EXTRA_DIST = ../conf.d/modgstatus.conf
+ endif
  
-@@ -82,16 +82,16 @@
-     parser = GParser(host, metric)
-     value = parser.parse(s.makefile("r"))
-     s.close()
--  except Exception, err:
--    print "CHECKGANGLIA UNKNOWN: Error while getting value \"%s\"" % (err)
-+  except Exception as err:
-+    print("CHECKGANGLIA UNKNOWN: Error while getting value \"%s\"" % (err))
-     sys.exit(3)
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@
+diff -ru ganglia-3.7.2.org/gmond/modules/system/Makefile.am ganglia-3.7.2.new/gmond/modules/system/Makefile.am
+--- ganglia-3.7.2.org/gmond/modules/system/Makefile.am	2024-11-15 08:55:59.644058105 +0700
++++ ganglia-3.7.2.new/gmond/modules/system/Makefile.am	2024-11-15 09:28:50.333082937 +0700
+@@ -16,4 +16,4 @@
+ modsys_la_LIBADD = $(top_builddir)/libmetrics/libmetrics.la
+ endif
  
-   if value >= critical:
--    print "CHECKGANGLIA CRITICAL: %s is %.2f" % (metric, value)
-+    print("CHECKGANGLIA CRITICAL: %s is %.2f" % (metric, value))
-     sys.exit(2)
-   elif value >= warning:
--    print "CHECKGANGLIA WARNING: %s is %.2f" % (metric, value)
-+    print("CHECKGANGLIA WARNING: %s is %.2f" % (metric, value))
-     sys.exit(1)
-   else:
--    print "CHECKGANGLIA OK: %s is %.2f" % (metric, value)
-+    print("CHECKGANGLIA OK: %s is %.2f" % (metric, value))
-     sys.exit(0)
-diff -ru ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_config.py ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_config.py
---- ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_config.py	2024-11-14 23:44:01.708616852 +0700
-+++ ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_config.py	2024-11-14 23:46:43.211225212 +0700
-@@ -152,7 +152,7 @@
-                 break
-             if args is None:
-                 continue
--            if self.kwHandlers.has_key(kw):
-+            if kw in self.kwHandlers:
-                 self.kwHandlers[kw](args)
-             elif (args.strip().startswith('{')):
-                 self._setSection(kw,f)
-@@ -312,17 +312,17 @@
-     options, arguments = parser.parse_args()
-     
-     if not options.debug.isdigit():
--        print 'Invalid numeric value for --debug: %s' % options.debug
-+        print('Invalid numeric value for --debug: %s' % options.debug)
-         parser.print_help()
-         sys.exit()
-     elif not options.interactive_port.isdigit():
--        print 'Invalid numeric value for --interactive_port: %s' % options.interactive_port
-+        print('Invalid numeric value for --interactive_port: %s' % options.interactive_port)
-         sys.exit()
-     elif not options.xml_port.isdigit():
--        print 'Invalid numeric value for --xml_port: %s' % options.xml_port
-+        print('Invalid numeric value for --xml_port: %s' % options.xml_port)
-         sys.exit()
-     elif not os.path.exists(options.conf):
--        print 'No such configuration file: %s' % options.conf
-+        print('No such configuration file: %s' % options.conf)
-         parser.print_help()
-         sys.exit()
-         
-diff -ru ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_daemon.py ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_daemon.py
---- ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_daemon.py	2024-11-14 23:44:01.709616869 +0700
-+++ ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_daemon.py	2024-11-14 23:46:43.230225519 +0700
-@@ -36,7 +36,7 @@
- import sys
- import resource
- 
--from gmetad_config import getConfig, GmetadConfig
-+from .gmetad_config import getConfig, GmetadConfig
- 
- def setuid():
-     cfg = getConfig()
-@@ -47,7 +47,7 @@
-         try:
-             os.setuid(pwd.getpwnam(setuid_user)[2])
-         except Exception:
--            print 'Unable to setuid to user "%s", exiting' % setuid_user
-+            print('Unable to setuid to user "%s", exiting' % setuid_user)
-             sys.exit()
-         
- def daemonize(ignore_fds=[]):
-@@ -60,15 +60,15 @@
-         
-     try:
-         pid = os.fork()
--    except OSError, e:
--        raise Exception, 'Daemonize error: %d (%s)' % (e.errno, e.strerror)
-+    except OSError as e:
-+        raise Exception('Daemonize error: %d (%s)' % (e.errno, e.strerror))
-     if pid == 0:
-         # first child
-         os.setsid()
-         try:
-             pid = os.fork()
--        except OSError, e:
--            raise Exception, 'Daemonize error: %d (%s)' % (e.errno, e.strerror)
-+        except OSError as e:
-+            raise Exception('Daemonize error: %d (%s)' % (e.errno, e.strerror))
-         if pid == 0:
-             # second child
-             os.chdir(WORKDIR)
-diff -ru ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_data.py ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_data.py
---- ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_data.py	2024-11-14 23:44:01.709616869 +0700
-+++ ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_data.py	2024-11-14 23:46:43.315226892 +0700
-@@ -31,14 +31,14 @@
- #*                  Brad Nicholes (bnicholes novell.com)
- #******************************************************************************/
- 
--import thread, threading
-+import _thread, threading
- import logging
- import time
- 
--from gmetad_element import Element
--from gmetad_config import getConfig, GmetadConfig
--from gmetad_notifier import GmetadNotifier
--from gmetad_random import getRandomInterval
-+from .gmetad_element import Element
-+from .gmetad_config import getConfig, GmetadConfig
-+from .gmetad_notifier import GmetadNotifier
-+from .gmetad_random import getRandomInterval
- 
- class DataStore:
-     '''The Datastore object stores all of the metric data
-@@ -47,7 +47,7 @@
-        of the object will produce the same data store. '''
-     _shared_state = {} #Storage for a singleton object
-     _initialized = False
--    lock = thread.allocate_lock()
-+    lock = _thread.allocate_lock()
-     
-     def __init__(self):
-         # Replace the objects attributes with the original
-@@ -58,7 +58,7 @@
-         if not DataStore._initialized:
-             # Allocate a lock that will be used by all threads
-             #  that are reading or writing to the data store.
--            self.lock = thread.allocate_lock()
-+            self.lock = _thread.allocate_lock()
-             self.lock.acquire()
-             self.rootElement = None
-             # Initialize the data store with the GANGLIA_XML and GRID tags.
-@@ -352,7 +352,7 @@
-                     except KeyError:
-                         pass
-                     # Summarize over all of the metrics in the cluster node summary.
--                    for metricNode in clusterNode.summaryData['summary'].itervalues():
-+                    for metricNode in clusterNode.summaryData['summary'].values():
-                         # Don't include metrics that can not be summarized
-                         if metricNode.getAttr('type') in ['string', 'timestamp']:
-                             continue
-@@ -368,8 +368,8 @@
-                             gridNode.summaryData['summary'][str(summaryNode)] = summaryNode
-                             summaryNode.setAttr('sum', metricNode.getAttr('sum'))
-                         summaryNode.incAttr('num', 1)
--        except Exception, e:
--            print 'Grid summary ' + str(e) 
-+        except Exception as e:
-+            print('Grid summary ' + str(e)) 
-         ds.releaseLock(self)
- 
-     def run(self):
-diff -ru ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_element.py ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_element.py
---- ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_element.py	2024-11-14 23:44:01.709616869 +0700
-+++ ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_element.py	2024-11-14 23:46:43.348227425 +0700
-@@ -54,7 +54,7 @@
-         # If any attributes where given during intialization, add them here.
-         self.attrs = {}
-         self.lastReportedTime = 0
--        for k,v in attrs.items():
-+        for k,v in list(attrs.items()):
-             self.attrs[k.lower()] = v
-         self.children = {}
-         self.gridDepth = -1
-@@ -72,7 +72,7 @@
-         
-     def update(self, elem):
-         ''' This method updates an existing chld node based on a new node. '''
--        for k in self.attrs.keys():
-+        for k in list(self.attrs.keys()):
-             try:
-                 self.attrs[k] = elem.attrs[k]
-             except ValueError:
-@@ -80,18 +80,18 @@
-         
-     def __str__(self):
-         ''' This method generates a string representation of a node. '''
--        if self.attrs.has_key('name'):
-+        if 'name' in self.attrs:
-             return Element.generateKey([self.id,self.attrs['name']])
-         return Element.generateKey(self.id)
-         
-     def __iter__(self):
-         ''' This method allow the class to be an interator over it's children. '''
--        return self.children.itervalues()
-+        return iter(self.children.values())
-         
-     def __copy__(self):
-         ''' Shallow copy method, may not be used. '''
-         cp = Element(self.id, {})
--        for k in self.attrs.keys():
-+        for k in list(self.attrs.keys()):
-             try:
-                 cp.attrs[k.lower()] = copy.copy(self.attrs[k])
-             except ValueError:
-@@ -102,7 +102,7 @@
-         '''  This method creates a copy of the node that can be used as a summary node. '''
-         attrs = {}
-         # Copy all of the attributes that are necessary for a summary node.
--        for k in self.attrs.keys():
-+        for k in list(self.attrs.keys()):
-             try:
-                 if k.lower() in ['name', 'sum', 'num', 'type', 'units', 'slope', 'source']:
-                     attrs[k.lower()] = self.attrs[k]
-@@ -117,7 +117,7 @@
-         return cp
-         
-     def getAttr(self, attr):
--        if self.attrs.has_key(attr.lower()):
-+        if attr.lower() in self.attrs:
-             return self.attrs[attr.lower()]
-         return None
-         
-@@ -130,8 +130,8 @@
-     def incAttr(self, attr, val):
-         try:
-             self.attrs[attr.lower()] += val
--        except Exception, e:
--            print 'Can not increment attribute ' + str(e)
-+        except Exception as e:
-+            print('Can not increment attribute ' + str(e))
-         
-     def getSummaryData(self):
-         try:
-diff -ru ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_gmondReader.py ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_gmondReader.py
---- ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_gmondReader.py	2024-11-14 23:44:01.709616869 +0700
-+++ ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_gmondReader.py	2024-11-14 23:46:43.397228216 +0700
-@@ -38,10 +38,10 @@
- import logging
- import zlib
- 
--from gmetad_config import GmetadConfig, getConfig
--from gmetad_random import getRandomInterval
--from gmetad_data import DataStore
--from gmetad_data import Element
-+from .gmetad_config import GmetadConfig, getConfig
-+from .gmetad_random import getRandomInterval
-+from .gmetad_data import DataStore
-+from .gmetad_data import Element
- 
- class GmondContentHandler(xml.sax.ContentHandler):
-     ''' This class implements the XML parser used to parse XML data from a gmond cluster. '''
-diff -ru ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_notifier.py ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_notifier.py
---- ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_notifier.py	2024-11-14 23:44:01.708616852 +0700
-+++ ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_notifier.py	2024-11-14 23:46:43.418228555 +0700
-@@ -32,13 +32,13 @@
- #******************************************************************************/
- 
- import threading
--import cPickle as pickle
-+import pickle as pickle
- import zlib
- import logging
- 
--from gmetad_element import Element
--from gmetad_config import getConfig, GmetadConfig
--from gmetad_plugin import load_plugins, start_plugins, stop_plugins, notify_plugins
-+from .gmetad_element import Element
-+from .gmetad_config import getConfig, GmetadConfig
-+from .gmetad_plugin import load_plugins, start_plugins, stop_plugins, notify_plugins
- 
- _decode = lambda x: (pickle.loads(zlib.decompress(x)))
- _encode = lambda x: buffer(zlib.compress(pickle.dumps(x, pickle.HIGHEST_PROTOCOL)))
-diff -ru ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_plugin.py ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_plugin.py
---- ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_plugin.py	2024-11-14 23:44:01.709616869 +0700
-+++ ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_plugin.py	2024-11-14 23:46:43.437228862 +0700
-@@ -36,7 +36,7 @@
- import os
- import sys
- 
--from gmetad_config import getConfig
-+from .gmetad_config import getConfig
- 
- _plugins = []  # Holds a list of all of the plugins
- 
-@@ -69,7 +69,7 @@
-                     logging.warning('Plugin %s is not a gmetad plugin' % plugin_name)
-                 else:
-                     _plugins.append(plugin)
--            except Exception, e:
-+            except Exception as e:
-                 logging.warning('Failed to load plugin %s (caught exception %s)' % (plugin_name, e))
-         finally:
-             if fp: fp.close()
-@@ -117,9 +117,9 @@
-     def start(self):
-         '''Called by the engine during initialization to get the plugin going.  Must
-         be overridden by subclasses.'''
--        raise Exception, 'No definition provided for plugin "start" method.'
-+        raise Exception('No definition provided for plugin "start" method.')
-     
-     def stop(self):
-         '''Called by the engine during shutdown to allow the plugin to shutdown.  Must
-         be overridden by subclasses.'''
--        raise Exception, 'No definition provided for plugin "stop" method.'
-+        raise Exception('No definition provided for plugin "stop" method.')
-diff -ru ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_xmlWriter.py ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_xmlWriter.py
---- ganglia-3.7.2.org/gmetad-python/Gmetad/gmetad_xmlWriter.py	2024-11-14 23:44:01.709616869 +0700
-+++ ganglia-3.7.2.new/gmetad-python/Gmetad/gmetad_xmlWriter.py	2024-11-14 23:46:43.486229654 +0700
-@@ -31,12 +31,12 @@
- #*                  Brad Nicholes (bnicholes novell.com)
- #******************************************************************************/
- 
--import thread
-+import _thread
- import time
- import logging
- 
--from gmetad_config import GmetadConfig
--from gmetad_data import DataStore, Element
-+from .gmetad_config import GmetadConfig
-+from .gmetad_data import DataStore, Element
- 
- class XmlWriter:
-     _xml_starttag = '<?xml version="1.0" encoding="ISO-8859-1" standalone="yes"?>'
-@@ -122,13 +122,13 @@
-         # If we have summary data, then interate through all of the metric nodes and generate XML for each.
-         summaryData = gridnode.getSummaryData()
-         if summaryData is not None:
--            for m in summaryData['summary'].itervalues():
-+            for m in summaryData['summary'].values():
-                 cbuf += self._getXmlImpl(m, filterList, queryargs)
-         # Format the XML based on all of the results.
-         rbuf = '<HOSTS UP="%d" DOWN="%d" SOURCE="gmetad" />\n%s' % (hosts[0], hosts[1], cbuf)
-         if self.gridDepth == 0:
-             # Generate the XML for each cluster/grid node.
--            for c in gridnode.children.values():
-+            for c in list(gridnode.children.values()):
-                 if 'CLUSTER' == c.id or 'GRID' == c.id:
-                     rbuf += self._getXmlImpl(c, filterList, queryargs)
-         return rbuf
-@@ -141,7 +141,7 @@
-         # If we have summary data, then interate through all of the metric nodes and generate XML for each.
-         summaryData = clusternode.getSummaryData()
-         if summaryData is not None:
--            for m in summaryData['summary'].itervalues():
-+            for m in summaryData['summary'].values():
-                 cbuf += self._getXmlImpl(m, filterList, queryargs)
-         # Format the XML based on all of the results.
-         rbuf = '<HOSTS UP="%d" DOWN="%d" SOURCE="gmetad" />\n%s' % (hosts[0], hosts[1], cbuf)
-@@ -163,7 +163,7 @@
-             # Add the XML tag
-             rbuf = '<%s' % element.tag
-             # Add each attribute that is contained in the.  By pass some specific attributes.
--            for k,v in element.getAttrs().items():
-+            for k,v in list(element.getAttrs().items()):
-                 rbuf += ' %s="%s"' % (k.upper(), v)
-         if queryargs is not None or ('GRID' == element.id and self.gridDepth > 0):
-             if (('GRID' == element.id or 'CLUSTER' == element.id) and (filterList is None or not len(filterList))) or ('GRID' == element.id and self.gridDepth > 0):
-@@ -204,7 +204,7 @@
-                     pass
-             if showAllChildren:
-                 # For each child, call this method recusively.  This will produce a complete dump of all children
--                for c in element.children.values():
-+                for c in list(element.children.values()):
-                     rbuf += self._getXmlImpl(c, filterList, queryargs)
-             if 'GRID' == element.tag:
-                 self.gridDepth -= 1
-diff -ru ganglia-3.7.2.org/gmetad-python/gmetad_consistency_test.py ganglia-3.7.2.new/gmetad-python/gmetad_consistency_test.py
---- ganglia-3.7.2.org/gmetad-python/gmetad_consistency_test.py	2024-11-14 23:44:01.708616852 +0700
-+++ ganglia-3.7.2.new/gmetad-python/gmetad_consistency_test.py	2024-11-14 23:46:43.083223145 +0700
-@@ -40,7 +40,7 @@
- import socket
- import xml.sax
- import sys
--from urlparse import urlsplit
-+from urllib.parse import urlsplit
- 
- class GmetadElement:
-     def __init__(self, id):
-@@ -56,7 +56,7 @@
-         
-     def __str__(self):
-         buf = 'ID: %s\nAttrs:' % self.id
--        for k, v in self._data.items():
-+        for k, v in list(self._data.items()):
-             buf += ' %s=>%s' % (k,v)
-         buf += '\n'
-         for ce in self.child_elements:
-@@ -73,7 +73,7 @@
-         
-     def startElement(self, tag, attrs):
-         newElem = GmetadElement(tag)
--        for ak, av in attrs.items():
-+        for ak, av in list(attrs.items()):
-             newElem[ak] = av
-         if self._elemStackSize:
-             self._elemStack[self._elemStackSize-1].child_elements.append(newElem)
-@@ -124,14 +124,14 @@
- def checkEquivalentXml(oldelem, newelem):
-     global ignore_attr_values
-     if oldelem.id != newelem.id:
--        raise Exception, 'Element ids do not match (old=%s, new=%s)' % (oldelem.id, newelem.id)
-+        raise Exception('Element ids do not match (old=%s, new=%s)' % (oldelem.id, newelem.id))
-     if len(oldelem._data) != len(newelem._data):
--        raise Exception, 'Element attribute numbers do not match at node %s (old=%d, new=%d)' % (oldelem.id, len(oldelem._data), len(newelem._data))
-+        raise Exception('Element attribute numbers do not match at node %s (old=%d, new=%d)' % (oldelem.id, len(oldelem._data), len(newelem._data)))
-     if len(oldelem.child_elements) != len(newelem.child_elements):
--        raise Exception, 'Element children numbers do not match at node %s (old=%d, new=%d)' % (oldelem.id, len(oldelem.child_elements), len(newelem.child_elements))
--    for k in oldelem._data.keys():
--        if not newelem._data.has_key(k):
--            raise Exception, 'Attribute "%s" not found in new XML' % k
-+        raise Exception('Element children numbers do not match at node %s (old=%d, new=%d)' % (oldelem.id, len(oldelem.child_elements), len(newelem.child_elements)))
-+    for k in list(oldelem._data.keys()):
-+        if k not in newelem._data:
-+            raise Exception('Attribute "%s" not found in new XML' % k)
-         if oldelem[k] != newelem[k]:
-             if k in ignore_attr_values:
-                 # Skip context-sensitive values
-@@ -142,10 +142,10 @@
-             if oldelem.id == 'GRID' and k == 'AUTHORITY':
-                 if urlCompare(oldelem[k], newelem[k]):
-                     continue
--            raise Exception, 'Value for attribute "%s" of tag %s does not match (old=%s, new=%s)' % (k, oldelem.id, oldelem[k], newelem[k])
--    for k in newelem._data.keys():
--        if not oldelem._data.has_key(k):
--            raise Exception, 'Attribute "%s" not found in old XML' % k
-+            raise Exception('Value for attribute "%s" of tag %s does not match (old=%s, new=%s)' % (k, oldelem.id, oldelem[k], newelem[k]))
-+    for k in list(newelem._data.keys()):
-+        if k not in oldelem._data:
-+            raise Exception('Attribute "%s" not found in old XML' % k)
-         if oldelem[k] != newelem[k]:
-             if k in ignore_attr_values:
-                 # Skip context-sensitive values
-@@ -156,10 +156,10 @@
-             if oldelem.id == 'GRID' and k == 'AUTHORITY':
-                 if urlCompare(oldelem[k], newelem[k]):
-                     continue
--            raise Exception, 'Value for attribute "%s" of tag %s does not match (old=%s, new=%s)' % (k, oldelem.id, oldelem[k], newelem[k])
-+            raise Exception('Value for attribute "%s" of tag %s does not match (old=%s, new=%s)' % (k, oldelem.id, oldelem[k], newelem[k]))
-     for oce in oldelem.child_elements:
-         for nce in newelem.child_elements:
--            if oce._data.has_key('NAME') and nce._data.has_key('NAME'):
-+            if 'NAME' in oce._data and 'NAME' in nce._data:
-                 if oce['NAME'] == nce['NAME']:
-                     checkEquivalentXml(oce, nce)
-                     break
-@@ -183,10 +183,10 @@
-     
- def compare_xml(oldXmlHandler, newXmlHandler):
-     if len(oldXmlHandler.elemList) != len(newXmlHandler.elemList):
--        raise Exception, 'Different number of base elements.'
-+        raise Exception('Different number of base elements.')
-     for oe in oldXmlHandler.elemList:
-         for ne in newXmlHandler.elemList:
--            if oe._data.has_key('NAME') and ne._data.has_key('NAME'):
-+            if 'NAME' in oe._data and 'NAME' in ne._data:
-                 if oe['NAME'] == ne['NAME']:
-                     checkEquivalentXml(oe, ne)
-                     break
-@@ -194,9 +194,9 @@
-                 checkEquivalentXml(oe, ne)
-     
- def run_xml_consistency_test(old, new):
--    print 'Running XML Consistency Test.'
--    print 'Old host is %s' % old
--    print 'New host is %s' % new
-+    print('Running XML Consistency Test.')
-+    print('Old host is %s' % old)
-+    print('New host is %s' % new)
-     
-     sock = get_socket(old)
-     xmlbuf = get_xml_from_socket(sock)
-@@ -213,9 +213,9 @@
- def run_interactive_consistency_test(old, new):
-     filters = ['\n', '/\n', '/Grid-Node\n', '/Grid-Node/localhost\n', '/Grid-Node/localhost/mem_free\n']
-     for filter in filters:
--        print 'Running interactive consistency test with filter "%s"' % filter.strip()
--        print 'Old host is %s' % old
--        print 'New host is %s' % new
-+        print('Running interactive consistency test with filter "%s"' % filter.strip())
-+        print('Old host is %s' % old)
-+        print('New host is %s' % new)
-         
-         sock = get_socket(old)
-         sock.send(filter)
-@@ -261,13 +261,13 @@
-     do_interactive_test=False
-     do_xml_test=False
-     if options.old_gmetad_interactive == options.new_gmetad_interactive:
--        print 'Locations for old and new gmetad interative ports are the same.'
--        print 'Skipping the interactive port consistency test.'
-+        print('Locations for old and new gmetad interative ports are the same.')
-+        print('Skipping the interactive port consistency test.')
-     else:
-         do_interactive_test=True
-     if options.old_gmetad_xml == options.new_gmetad_xml:
--        print 'Locations for old and new gmetad xml ports are the same.'
--        print 'Skipping the xml port consistency test.'
-+        print('Locations for old and new gmetad xml ports are the same.')
-+        print('Skipping the xml port consistency test.')
-     else:
-         do_xml_test=True
-         
-@@ -298,5 +298,5 @@
-             line = f.readline()
-             pid = line.strip()
-             os.kill(int(pid), signal.SIGTERM)
--    print 'All tests passed.'
-+    print('All tests passed.')
- 
-diff -ru ganglia-3.7.2.org/gmetad-python/gmetad.py ganglia-3.7.2.new/gmetad-python/gmetad.py
---- ganglia-3.7.2.org/gmetad-python/gmetad.py	2024-11-14 23:44:01.708616852 +0700
-+++ ganglia-3.7.2.new/gmetad-python/gmetad.py	2024-11-14 23:46:43.009221950 +0700
-@@ -190,7 +190,7 @@
-             logging.debug('Wrote pid %d to pidfile %s' % (os.getpid(), gmetadConfig[GmetadConfig.PIDFILE]))
-             pffd.close()
-             pffd = open(gmetadConfig[GmetadConfig.PIDFILE], 'r')
--        except Exception, e:
-+        except Exception as e:
-             logging.error('Unable to write PID %d to %s (%s)' % (os.getpid(), gmetadConfig[GmetadConfig.PIDFILE], e))
-             sys.exit()
- 
-@@ -218,7 +218,7 @@
-             asyncore.loop()
-         except KeyboardInterrupt:
-             logging.info('Shutting down...')
--        except Exception, e:
-+        except Exception as e:
-             logging.error('Caught exception: %s' % e)
-             raise
-     finally:
-@@ -233,9 +233,9 @@
-         try:
-             xmlSocket.close()
-             interactiveSocket.close()
--        except AttributeError, e:
-+        except AttributeError as e:
-             logging.error ('Problem closing socket: %s'% e)
--        except Exception, e:
-+        except Exception as e:
-             logging.error('Caught exception: %s' % e)
-         if pffd is not None:
-             pffd.close()
-diff -ru ganglia-3.7.2.org/gmetad-python/plugins/rrd_plugin.py ganglia-3.7.2.new/gmetad-python/plugins/rrd_plugin.py
---- ganglia-3.7.2.org/gmetad-python/plugins/rrd_plugin.py	2024-11-14 23:44:01.708616852 +0700
-+++ ganglia-3.7.2.new/gmetad-python/plugins/rrd_plugin.py	2024-11-14 23:46:43.530230364 +0700
-@@ -86,7 +86,7 @@
-         '''This method overrides the plugin base class method.  It is used to
-             parse the plugin specific configuration directives.'''
-         for kw,args in cfgdata:
--            if self.kwHandlers.has_key(kw):
-+            if kw in self.kwHandlers:
-                 self.kwHandlers[kw](args)
- 
-     def _parseRrdRootdir(self, arg):
-@@ -105,7 +105,7 @@
-         ''' This method validates that an RRD directory exists or creates the directory
-             if it doesn't exist. '''
-         if not os.path.isdir(dir):
--            os.mkdir(dir, 0755)
-+            os.mkdir(dir, 0o755)
-             
-     def _createRRD(self, clusterNode, metricNode, rrdPath, step, summary):
-         ''' This method creates a new metric RRD file.'''
-@@ -136,7 +136,7 @@
-             # Create the RRD file with the supplied args.
-             rrdtool.create(*args)
-             logging.debug('Created rrd %s'%rrdPath)
--        except Exception, e:
-+        except Exception as e:
-             logging.info('Error creating rrd %s - %s'%(rrdPath, str(e)))
-         
-     def _updateRRD(self, clusterNode, metricNode, rrdPath, summary):
-@@ -155,7 +155,7 @@
-             # Update the RRD file with the current timestamp and value
-             rrdtool.update(*args)
-             #logging.debug('Updated rrd %s with value %s'%(rrdPath, str(metricNode.getAttr('val'))))
--        except Exception, e:
-+        except Exception as e:
-             logging.info('Error updating rrd %s - %s'%(rrdPath, str(e)))
- 
-     def start(self):
-diff -ru ganglia-3.7.2.org/gmetad-python/plugins/rrd_summary_plugin.py ganglia-3.7.2.new/gmetad-python/plugins/rrd_summary_plugin.py
---- ganglia-3.7.2.org/gmetad-python/plugins/rrd_summary_plugin.py	2024-11-14 23:44:01.708616852 +0700
-+++ ganglia-3.7.2.new/gmetad-python/plugins/rrd_summary_plugin.py	2024-11-14 23:46:43.573231059 +0700
-@@ -94,7 +94,7 @@
-             clusterPath = '%s/__SummaryInfo__'%clusterPath
-             self._checkDir(clusterPath)
-             # Update metrics for each cluster
--            for metricNode in clusterNode.summaryData['summary'].itervalues():
-+            for metricNode in clusterNode.summaryData['summary'].values():
-                 # Create the summary RRD final path and validate it
-                 rrdPath = '%s/%s.rrd'%(clusterPath,metricNode.getAttr('name'))
-                 # Create the RRD metric summary file if it doesn't exist
-@@ -119,7 +119,7 @@
-                     return
-             
-                 # Update metrics RRDs for grid summary
--                for metricNode in clusterNode.summaryData['summary'].itervalues():
-+                for metricNode in clusterNode.summaryData['summary'].values():
-                     # Create the summary RRD final path and validate it.
-                     rrdPath = '%s/%s.rrd'%(gridPath,metricNode.getAttr('name'))
-                     # if the RRD file doesn't exist then create it
-@@ -128,7 +128,7 @@
-                         #need to do some error checking here if the createRRD failed
-                     # Update the RRD file.
-                     self._updateRRD(clusterNode, metricNode, rrdPath, True)
--            except Exception, e:
-+            except Exception as e:
-                 logging.error('Error writing to summary RRD %s'%str(e))
- 
-         #print "RRDSummary notify called"
-@@ -167,7 +167,7 @@
-                     continue
-             
-                 # Update metrics RRDs for each cluster summary in the grid
--                for metricNode in gridNode.summaryData['summary'].itervalues():
-+                for metricNode in gridNode.summaryData['summary'].values():
-                     # Create the summary RRD final path and validate it.
-                     rrdPath = '%s/%s.rrd'%(rootPath,metricNode.getAttr('name'))
-                     # if the RRD file doesn't exist then create it
-@@ -176,7 +176,7 @@
-                         #need to do some error checking here if the createRRD failed
-                     # Update the RRD file.
-                     self._updateRRD(rootNode, metricNode, rrdPath, True)
--        except Exception, e:
-+        except Exception as e:
-             logging.error('Error writing to summary RRD %s'%str(e))
-         ds.releaseLock(self)
-         #print "RRDRootSummary called"
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@
 diff -ru ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py ganglia-3.7.2.new/gmond/python_modules/apache_status/apache_status.py
---- ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py	2024-11-14 23:44:01.716616982 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/apache_status/apache_status.py	2024-11-14 23:46:43.654232367 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py	2024-11-15 08:55:59.640058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/apache_status/apache_status.py	2024-11-15 09:32:28.883085691 +0700
 @@ -4,7 +4,7 @@
  import os
  import threading
@@ -850,7 +1265,17 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py g
  
              for line in res:
                  split_line = line.rstrip().split(": ")
-@@ -92,20 +92,20 @@
+@@ -86,26 +86,30 @@
+                     for sck in split_line[1]:
+                         metrics[ Scoreboard_bykey[sck] ] += 1
+                 else:
++                    # Apache > 2.4.16 inserts the hostname as the first line, so ignore
++                    if len(split_line) == 1:
++                        continue
++                    
+                     if long_metric_name in Metric_Map:
+                         metric_name = Metric_Map[long_metric_name]
+                     else:
                          metric_name = long_metric_name
                      metrics[metric_name] = split_line[1]
  
@@ -875,7 +1300,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py g
  
                  for line in res:
                      regMatch = SSL_REGEX.match(line)
-@@ -115,7 +115,7 @@
+@@ -115,7 +119,7 @@
                              #print SSL_NAME_PREFIX + key + "=" + linebits[key]
                              metrics[SSL_NAME_PREFIX + key] = linebits[key]
  
@@ -884,7 +1309,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py g
                  traceback.print_exc()
  
          LAST_METRICS = copy.deepcopy(METRICS)
-@@ -134,7 +134,7 @@
+@@ -134,7 +138,7 @@
  
      try:
          result = metrics['data'][name]
@@ -893,7 +1318,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py g
          result = 0
  
      return result
-@@ -155,7 +155,7 @@
+@@ -155,7 +159,7 @@
      try:
          delta = multiplier * (float(curr_metrics['data'][name]) - float(last_metrics['data'][name])) / (curr_metrics['time'] - last_metrics['time'])
          if delta < 0:
@@ -902,7 +1327,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py g
              delta = 0
      except KeyError:
          delta = 0.0
-@@ -165,7 +165,7 @@
+@@ -165,7 +169,7 @@
  
  def create_desc(prop):
      d = Desc_Skel.copy()
@@ -911,7 +1336,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py g
          d[k] = v
      return d
  
-@@ -173,8 +173,8 @@
+@@ -173,8 +177,8 @@
  def metric_init(params):
      global descriptors, Desc_Skel, SERVER_STATUS_URL, COLLECT_SSL
  
@@ -922,7 +1347,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py g
  
      if "metric_group" not in params:
          params["metric_group"] = "apache"
-@@ -261,7 +261,7 @@
+@@ -261,7 +265,7 @@
                  "description": "Uptime",
                  }))
  
@@ -931,7 +1356,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py g
          descriptors.append(create_desc({
                      "name"        : k,
                      "call_back"   : get_value,
-@@ -400,9 +400,9 @@
+@@ -400,9 +404,9 @@
              for d in descriptors:
                  v = d['call_back'](d['name'])
                  if d['name'] == NAME_PREFIX + "rps":
@@ -943,9 +1368,11 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/apache_status/apache_status.py g
              time.sleep(15)
      except KeyboardInterrupt:
          os._exit(1)
+Only in ganglia-3.7.2.new/gmond/python_modules/apache_status: apache_status.py.orig
+Only in ganglia-3.7.2.new/gmond/python_modules/apache_status: apache_status.py.rej
 diff -ru ganglia-3.7.2.org/gmond/python_modules/cpu/cpu_stats.py ganglia-3.7.2.new/gmond/python_modules/cpu/cpu_stats.py
---- ganglia-3.7.2.org/gmond/python_modules/cpu/cpu_stats.py	2024-11-14 23:44:01.717616998 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/cpu/cpu_stats.py	2024-11-14 23:46:43.703233158 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/cpu/cpu_stats.py	2024-11-15 08:55:59.641058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/cpu/cpu_stats.py	2024-11-15 09:32:28.883085691 +0700
 @@ -75,7 +75,7 @@
  
      try:
@@ -991,9 +1418,11 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/cpu/cpu_stats.py ganglia-3.7.2.n
 +            print('%s = %s' % (d['name'], v))
 +        print('Sleeping 15 seconds')
          time.sleep(5)
+Only in ganglia-3.7.2.new/gmond/python_modules/cpu: cpu_stats.py.orig
+Only in ganglia-3.7.2.new/gmond/python_modules/cpu: cpu_stats.py.rej
 diff -ru ganglia-3.7.2.org/gmond/python_modules/db/DBUtil.py ganglia-3.7.2.new/gmond/python_modules/db/DBUtil.py
---- ganglia-3.7.2.org/gmond/python_modules/db/DBUtil.py	2024-11-14 23:44:01.714616949 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/db/DBUtil.py	2024-11-14 23:46:43.779234386 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/db/DBUtil.py	2024-11-15 08:55:59.641058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/db/DBUtil.py	2024-11-15 09:32:28.883085691 +0700
 @@ -51,7 +51,7 @@
                  args = tuple()
              else:
@@ -1047,9 +1476,11 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/db/DBUtil.py ganglia-3.7.2.new/g
 +        except MySQLdb.OperationalError as xxx_todo_changeme:
 +                (errno, errmsg) = xxx_todo_changeme.args
                  raise
+Only in ganglia-3.7.2.new/gmond/python_modules/db: DBUtil.py.orig
+Only in ganglia-3.7.2.new/gmond/python_modules/db: DBUtil.py.rej
 diff -ru ganglia-3.7.2.org/gmond/python_modules/db/mysql.py ganglia-3.7.2.new/gmond/python_modules/db/mysql.py
---- ganglia-3.7.2.org/gmond/python_modules/db/mysql.py	2024-11-14 23:44:01.714616949 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/db/mysql.py	2024-11-14 23:46:43.970237471 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/db/mysql.py	2024-11-15 08:55:59.641058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/db/mysql.py	2024-11-15 09:32:28.884085691 +0700
 @@ -154,7 +154,7 @@
              cursor.execute("SHOW SLAVE STATUS")
              res = cursor.fetchone()
@@ -1090,9 +1521,10 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/db/mysql.py ganglia-3.7.2.new/gm
  
          if options.gmetric:
              if d['value_type'] == 'uint':
+Only in ganglia-3.7.2.new/gmond/python_modules/db: mysql.py.rej
 diff -ru ganglia-3.7.2.org/gmond/python_modules/db/redis.py ganglia-3.7.2.new/gmond/python_modules/db/redis.py
---- ganglia-3.7.2.org/gmond/python_modules/db/redis.py	2024-11-14 23:44:01.714616949 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/db/redis.py	2024-11-14 23:46:44.002237987 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/db/redis.py	2024-11-15 08:55:59.641058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/db/redis.py	2024-11-15 09:32:28.884085691 +0700
 @@ -83,7 +83,7 @@
                            v = cps
                    #logging.debug("submittincg metric %s is %s" % (n, int(v)))
@@ -1120,9 +1552,10 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/db/redis.py ganglia-3.7.2.new/gm
  
  
  def metric_cleanup():
+Only in ganglia-3.7.2.new/gmond/python_modules/db: redis.py.rej
 diff -ru ganglia-3.7.2.org/gmond/python_modules/db/riak.py ganglia-3.7.2.new/gmond/python_modules/db/riak.py
---- ganglia-3.7.2.org/gmond/python_modules/db/riak.py	2024-11-14 23:44:01.714616949 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/db/riak.py	2024-11-14 23:46:44.203241234 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/db/riak.py	2024-11-15 08:55:59.641058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/db/riak.py	2024-11-15 09:32:28.884085691 +0700
 @@ -24,7 +24,7 @@
  import sys
  import threading
@@ -1191,9 +1624,10 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/db/riak.py ganglia-3.7.2.new/gmo
              time.sleep(5)
      except KeyboardInterrupt:
          time.sleep(0.2)
+Only in ganglia-3.7.2.new/gmond/python_modules/db: riak.py.rej
 diff -ru ganglia-3.7.2.org/gmond/python_modules/disk/diskfree.py ganglia-3.7.2.new/gmond/python_modules/disk/diskfree.py
---- ganglia-3.7.2.org/gmond/python_modules/disk/diskfree.py	2024-11-14 23:44:01.717616998 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/disk/diskfree.py	2024-11-14 23:46:44.230241670 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/disk/diskfree.py	2024-11-15 08:55:59.641058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/disk/diskfree.py	2024-11-15 09:29:19.600083306 +0700
 @@ -152,4 +152,4 @@
      }
      descriptors = metric_init(PARAMS)
@@ -1201,8 +1635,8 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/disk/diskfree.py ganglia-3.7.2.n
 -        print (('%s = %s') % (d['name'], d['format'])) % (d['call_back'](d['name']))
 +        print((('%s = %s') % (d['name'], d['format'])) % (d['call_back'](d['name'])))
 diff -ru ganglia-3.7.2.org/gmond/python_modules/disk/diskstat.py ganglia-3.7.2.new/gmond/python_modules/disk/diskstat.py
---- ganglia-3.7.2.org/gmond/python_modules/disk/diskstat.py	2024-11-14 23:44:01.717616998 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/disk/diskstat.py	2024-11-14 23:46:44.318243091 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/disk/diskstat.py	2024-11-15 08:55:59.641058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/disk/diskstat.py	2024-11-15 09:32:28.884085691 +0700
 @@ -532,7 +532,7 @@
          for d in descriptors:
              v = d['call_back'](d['name'])
@@ -1219,9 +1653,10 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/disk/diskstat.py ganglia-3.7.2.n
 -        print 'Sleeping 15 seconds'
 +        print('Sleeping 15 seconds')
          time.sleep(15)
+Only in ganglia-3.7.2.new/gmond/python_modules/disk: diskstat.py.rej
 diff -ru ganglia-3.7.2.org/gmond/python_modules/disk/multidisk.py ganglia-3.7.2.new/gmond/python_modules/disk/multidisk.py
---- ganglia-3.7.2.org/gmond/python_modules/disk/multidisk.py	2024-11-14 23:44:01.717616998 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/disk/multidisk.py	2024-11-14 23:46:44.341243463 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/disk/multidisk.py	2024-11-15 08:55:59.641058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/disk/multidisk.py	2024-11-15 09:32:28.884085691 +0700
 @@ -118,7 +118,7 @@
              continue
  
@@ -1237,9 +1672,10 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/disk/multidisk.py ganglia-3.7.2.
          v = d['call_back'](d['name'])
 -        print 'value for %s is %f' % (d['name'],  v)
 +        print('value for %s is %f' % (d['name'],  v))
+Only in ganglia-3.7.2.new/gmond/python_modules/disk: multidisk.py.rej
 diff -ru ganglia-3.7.2.org/gmond/python_modules/example/example.py ganglia-3.7.2.new/gmond/python_modules/example/example.py
---- ganglia-3.7.2.org/gmond/python_modules/example/example.py	2024-11-14 23:44:01.717616998 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/example/example.py	2024-11-14 23:46:44.353243656 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/example/example.py	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/example/example.py	2024-11-15 09:29:19.600083306 +0700
 @@ -54,8 +54,8 @@
      global Constant_Value
      random.seed()
@@ -1258,8 +1694,8 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/example/example.py ganglia-3.7.2
 -        print 'value for %s is %u' % (d['name'], v)
 +        print('value for %s is %u' % (d['name'], v))
 diff -ru ganglia-3.7.2.org/gmond/python_modules/example/spfexample.py ganglia-3.7.2.new/gmond/python_modules/example/spfexample.py
---- ganglia-3.7.2.org/gmond/python_modules/example/spfexample.py	2024-11-14 23:44:01.717616998 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/example/spfexample.py	2024-11-14 23:46:44.374243996 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/example/spfexample.py	2024-11-15 08:55:59.643058105 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/example/spfexample.py	2024-11-15 09:29:19.600083306 +0700
 @@ -133,5 +133,5 @@
      d = metric_init(params)
      for d in descriptors:
@@ -1269,8 +1705,8 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/example/spfexample.py ganglia-3.
 +        print('value for %s is %s' % (d['name'], str(v)))
 +    print(d)
 diff -ru ganglia-3.7.2.org/gmond/python_modules/memcached/memcached.py ganglia-3.7.2.new/gmond/python_modules/memcached/memcached.py
---- ganglia-3.7.2.org/gmond/python_modules/memcached/memcached.py	2024-11-14 23:44:01.717616998 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/memcached/memcached.py	2024-11-14 23:46:44.462245417 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/memcached/memcached.py	2024-11-15 08:55:59.642058105 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/memcached/memcached.py	2024-11-15 09:32:28.884085691 +0700
 @@ -19,7 +19,7 @@
  
  def dprint(f, *v):
@@ -1349,9 +1785,19 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/memcached/memcached.py ganglia-3
              time.sleep(5)
      except KeyboardInterrupt:
          time.sleep(0.2)
+Only in ganglia-3.7.2.new/gmond/python_modules/memcached: memcached.py.rej
 diff -ru ganglia-3.7.2.org/gmond/python_modules/memory/mem_stats.py ganglia-3.7.2.new/gmond/python_modules/memory/mem_stats.py
---- ganglia-3.7.2.org/gmond/python_modules/memory/mem_stats.py	2024-11-14 23:44:01.714616949 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/memory/mem_stats.py	2024-11-14 23:46:44.525246434 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/memory/mem_stats.py	2024-11-15 08:55:59.640058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/memory/mem_stats.py	2024-11-15 09:32:49.967085957 +0700
+@@ -29,7 +29,7 @@
+     if name == 'mem_swap_used':
+         return metrics_handler('mem_swap_total') - metrics_handler('mem_swap_free')
+     for line in file:
+-        parts = re.split("\s+", line)
++        parts = re.split(r"\s+", line)
+         if parts[0] == metric_map[name]['name'] + ":":
+             # All of the measurements are in kBytes. We want to change them over
+             # to Bytes
 @@ -43,7 +43,7 @@
  
  def create_desc(skel, prop):
@@ -1367,9 +1813,10 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/memory/mem_stats.py ganglia-3.7.
          v = d['call_back'](d['name'])
 -        print 'value for %s is %f' % (d['name'], v)
 +        print('value for %s is %f' % (d['name'], v))
+Only in ganglia-3.7.2.new/gmond/python_modules/memory: mem_stats.py.orig
 diff -ru ganglia-3.7.2.org/gmond/python_modules/network/multi_interface.py ganglia-3.7.2.new/gmond/python_modules/network/multi_interface.py
---- ganglia-3.7.2.org/gmond/python_modules/network/multi_interface.py	2024-11-14 23:44:01.716616982 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/network/multi_interface.py	2024-11-14 23:46:44.578247290 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/network/multi_interface.py	2024-11-15 08:55:59.642058105 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/network/multi_interface.py	2024-11-15 09:32:28.884085691 +0700
 @@ -74,7 +74,7 @@
  
  def create_desc(skel, prop):
@@ -1379,7 +1826,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/network/multi_interface.py gangl
          d[k] = v
      return d
  
-@@ -242,7 +242,7 @@
+@@ -242,12 +242,12 @@
          try:
              delta = (float(curr_metrics['data'][iface][index]) - float(last_metrics['data'][iface][index])) / (curr_metrics['time'] - last_metrics['time'])
              if delta < 0:
@@ -1388,6 +1835,12 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/network/multi_interface.py gangl
                  delta = 0
          except KeyError:
              delta = 0.0
+ 
+-    sum += delta
++        sum += delta
+ 
+     return sum
+ 
 @@ -300,7 +300,7 @@
      try:
          delta = (float(curr_metrics['data'][iface][index]) - float(last_metrics['data'][iface][index])) / (curr_metrics['time'] - last_metrics['time'])
@@ -1410,82 +1863,178 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/network/multi_interface.py gangl
 +        print(sys.exc_info()[0])
          os._exit(1)
 diff -ru ganglia-3.7.2.org/gmond/python_modules/network/netstats.py ganglia-3.7.2.new/gmond/python_modules/network/netstats.py
---- ganglia-3.7.2.org/gmond/python_modules/network/netstats.py	2024-11-14 23:44:01.716616982 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/network/netstats.py	2024-11-14 23:48:40.704122796 +0700
-@@ -6,7 +6,6 @@
- import re
- import time
- import copy
--import string
+--- ganglia-3.7.2.org/gmond/python_modules/network/netstats.py	2024-11-15 08:55:59.642058105 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/network/netstats.py	2024-11-15 09:32:56.311086037 +0700
+@@ -19,6 +19,8 @@
  
- PARAMS = {}
+ LAST_METRICS = copy.deepcopy(METRICS)
+ METRICS_CACHE_MAX = 5
++# Metrics that are not counters but absolute values
++ABSOLUTE_VALUES = ["currestab"]
  
-@@ -75,7 +74,7 @@
+ stats_pos = {}
+ 
+@@ -44,10 +46,16 @@
+             for line in file:
+                 if re.match("(.*): [0-9]", line):
+                     count = 0
+-                    metrics = re.split("\s+", line)
++                    metrics = re.split(r"\s+", line)
+                     metric_group = metrics[0].replace(":", "").lower()
++                    if metric_group not in stats_pos:
++                        continue
+                     new_metrics[metric_group] = dict()
+                     for value in metrics:
++                        try:
++                            value = int(value)
++                        except ValueError:
++                            value = -1
+                         # Skip first
+                         if count > 0 and value >= 0 and count in stats_pos[metric_group]:
+                             metric_name = stats_pos[metric_group][count]
+@@ -69,13 +77,16 @@
+ def get_value(name):
+     """Return a value for the requested metric"""
+ 
+-    metrics = get_metrics()[0]
++    # get metrics
++    [curr_metrics, last_metrics] = get_metrics()
+ 
+-    name = name[len(NAME_PREFIX):]  # remove prefix from name
++    parts = name.split("_")
++    group = parts[0]
++    metric = "_".join(parts[1:])
  
      try:
-         result = metrics['data'][name]
+-        result = metrics['data'][name]
 -    except StandardError:
++        result = float(curr_metrics['data'][group][metric])
 +    except Exception:
          result = 0
  
      return result
-@@ -94,7 +93,7 @@
+@@ -94,7 +105,7 @@
      try:
          delta = (float(curr_metrics['data'][group][metric]) - float(last_metrics['data'][group][metric])) / (curr_metrics['time'] - last_metrics['time'])
          if delta < 0:
 -            print name + " is less 0"
-+            print(name + " is less 0")
++            print((name + " is less 0"))
              delta = 0
      except KeyError:
          delta = 0.0
-@@ -110,7 +109,7 @@
+@@ -110,7 +121,7 @@
      try:
          pct = 100 * (float(curr_metrics['data']['tcpext']["tcploss"]) - float(last_metrics["data"]['tcpext']["tcploss"])) / (float(curr_metrics['data']['tcp']['outsegs']) + float(curr_metrics['data']['tcp']['insegs']) - float(last_metrics['data']['tcp']['insegs']) - float(last_metrics['data']['tcp']['outsegs']))
          if pct < 0:
 -            print name + " is less 0"
-+            print(name + " is less 0")
++            print((name + " is less 0"))
              pct = 0
      except KeyError:
          pct = 0.0
-@@ -128,7 +127,7 @@
+@@ -128,7 +139,7 @@
      try:
          pct = 100 * (float(curr_metrics['data']['tcp']["attemptfails"]) - float(last_metrics["data"]['tcp']["attemptfails"])) / (float(curr_metrics['data']['tcp']['outsegs']) + float(curr_metrics['data']['tcp']['insegs']) - float(last_metrics['data']['tcp']['insegs']) - float(last_metrics['data']['tcp']['outsegs']))
          if pct < 0:
 -            print name + " is less 0"
-+            print(name + " is less 0")
++            print((name + " is less 0"))
              pct = 0
      except Exception:
          pct = 0.0
-@@ -144,7 +143,7 @@
+@@ -144,7 +155,7 @@
      try:
          pct = 100 * (float(curr_metrics['data']['tcp']["retranssegs"]) - float(last_metrics['data']['tcp']["retranssegs"])) / (float(curr_metrics['data']['tcp']['outsegs']) + float(curr_metrics['data']['tcp']['insegs']) - float(last_metrics['data']['tcp']['insegs']) - float(last_metrics['data']['tcp']['outsegs']))
          if pct < 0:
 -            print name + " is less 0"
-+            print(name + " is less 0")
++            print((name + " is less 0"))
              pct = 0
      except KeyError:
          pct = 0.0
-@@ -156,7 +155,7 @@
+@@ -156,7 +167,7 @@
  
  def create_desc(skel, prop):
      d = skel.copy()
 -    for k, v in prop.iteritems():
-+    for k, v in prop.items():
++    for k, v in list(prop.items()):
          d[k] = v
      return d
  
-@@ -253,6 +252,6 @@
+@@ -195,7 +206,7 @@
+             # Lines with
+             if not re.match("(.*): [0-9]", line):
+                 count = 0
+-                mapping = re.split("\s+", line)
++                mapping = re.split(r"\s+", line)
+                 metric_group = mapping[0].replace(":", "").lower()
+                 stats_pos[metric_group] = dict()
+                 for metric in mapping:
+@@ -209,11 +220,17 @@
+ 
+     for group in stats_pos:
+         for item in stats_pos[group]:
+-            descriptors.append(create_desc(Desc_Skel, {
++            if stats_pos[group][item] in ABSOLUTE_VALUES:
++                descriptors.append(create_desc(Desc_Skel, {
++                    "name"       : group + "_" + stats_pos[group][item],
++                    "call_back"  : get_value,
++                    "groups"     : group
++                }))
++            else:
++                descriptors.append(create_desc(Desc_Skel, {
+                     "name"       : group + "_" + stats_pos[group][item],
+-                    "description": stats_pos[group][item],
+-                    'groups'     : group
+-                    }))
++                    "groups"     : group
++                }))
+ 
+     descriptors.append(create_desc(Desc_Skel, {
+         "name"       : "tcpext_tcploss_percentage",
+@@ -221,7 +238,7 @@
+         "description": "TCP percentage loss, tcploss / insegs + outsegs",
+         "units"      : "pct",
+         'groups'     : 'tcpext'
+-        }))
++    }))
+ 
+     descriptors.append(create_desc(Desc_Skel, {
+         "name"       : "tcp_attemptfails_percentage",
+@@ -229,7 +246,7 @@
+         "description": "TCP attemptfail percentage, tcpattemptfail / insegs + outsegs",
+         "units"      : "pct",
+         'groups'     : 'tcp'
+-        }))
++    }))
+ 
+     descriptors.append(create_desc(Desc_Skel, {
+         "name"       : "tcp_retrans_percentage",
+@@ -237,7 +254,7 @@
+         "description": "TCP retrans percentage, retranssegs / insegs + outsegs",
+         "units"      : "pct",
+         'groups'     : 'tcp'
+-        }))
++    }))
+ 
+     return descriptors
+ 
+@@ -247,12 +264,12 @@
+     pass
+ 
+ 
+-#This code is for debugging and unit testing
++# This code is for debugging and unit testing
+ if __name__ == '__main__':
+     descriptors = metric_init(PARAMS)
      while True:
          for d in descriptors:
              v = d['call_back'](d['name'])
 -            print '%s = %s' % (d['name'],  v)
 -        print 'Sleeping 15 seconds'
-+            print('%s = %s' % (d['name'],  v))
++            print('%s = %s' % (d['name'], v))
 +        print('Sleeping 15 seconds')
          time.sleep(15)
 diff -ru ganglia-3.7.2.org/gmond/python_modules/network/tcpconn.py ganglia-3.7.2.new/gmond/python_modules/network/tcpconn.py
---- ganglia-3.7.2.org/gmond/python_modules/network/tcpconn.py	2024-11-14 23:44:01.716616982 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/network/tcpconn.py	2024-11-14 23:46:44.725249665 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/network/tcpconn.py	2024-11-15 08:55:59.642058105 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/network/tcpconn.py	2024-11-15 09:32:28.884085691 +0700
 @@ -68,7 +68,7 @@
      global _WorkerThread
  
@@ -1523,8 +2072,8 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/network/tcpconn.py ganglia-3.7.2
          except KeyboardInterrupt:
              os._exit(1)
 diff -ru ganglia-3.7.2.org/gmond/python_modules/network/traffic1.py ganglia-3.7.2.new/gmond/python_modules/network/traffic1.py
---- ganglia-3.7.2.org/gmond/python_modules/network/traffic1.py	2024-11-14 23:44:01.716616982 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/network/traffic1.py	2024-11-14 23:46:44.770250391 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/network/traffic1.py	2024-11-15 08:55:59.642058105 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/network/traffic1.py	2024-11-15 09:32:28.884085691 +0700
 @@ -16,7 +16,7 @@
  
  def dprint(f, *v):
@@ -1588,17 +2137,9 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/network/traffic1.py ganglia-3.7.
 +        print(sys.exc_info()[0])
          os._exit(1)
 diff -ru ganglia-3.7.2.org/gmond/python_modules/nfs/nfsstats.py ganglia-3.7.2.new/gmond/python_modules/nfs/nfsstats.py
---- ganglia-3.7.2.org/gmond/python_modules/nfs/nfsstats.py	2024-11-14 23:44:01.713616933 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/nfs/nfsstats.py	2024-11-14 23:48:22.968836360 +0700
-@@ -16,7 +16,6 @@
- import time
- import syslog
- import sys
--import string
- 
- 
- def test_proc(p_file, p_string):
-@@ -273,11 +272,11 @@
+--- ganglia-3.7.2.org/gmond/python_modules/nfs/nfsstats.py	2024-11-15 08:55:59.641058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/nfs/nfsstats.py	2024-11-15 09:32:28.885085691 +0700
+@@ -273,11 +273,11 @@
  
          # Parse our defined params list in order to ensure list will not exceed max_plimit
          n = 0
@@ -1612,18 +2153,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/nfs/nfsstats.py ganglia-3.7.2.ne
              if int(param_pos) > int(max_plimit):
                  keys_to_remove.append(_tmpkey)
              n += 1
-@@ -368,8 +367,8 @@
-     m_value = m.group(1)
- 
-     #RB: multiple (space seperated) values: calculate sum
--    if string.count(m_value, ' ') > 0:
--        m_fields = string.split(m_value, ' ')
-+    if m_value.count(' ') > 0:
-+        m_fields = m_value.split(' ')
- 
-         sum_value = 0
- 
-@@ -388,7 +387,7 @@
+@@ -388,7 +388,7 @@
      if level > verboselevel:
          return
      if sys.stderr.isatty():
@@ -1633,8 +2163,8 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/nfs/nfsstats.py ganglia-3.7.2.ne
          syslog.syslog(text)
  
 diff -ru ganglia-3.7.2.org/gmond/python_modules/process/procstat.py ganglia-3.7.2.new/gmond/python_modules/process/procstat.py
---- ganglia-3.7.2.org/gmond/python_modules/process/procstat.py	2024-11-14 23:44:01.714616949 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/process/procstat.py	2024-11-14 23:46:44.982253815 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/process/procstat.py	2024-11-15 08:55:59.642058105 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/process/procstat.py	2024-11-15 09:32:28.885085691 +0700
 @@ -144,7 +144,7 @@
      logging.debug('getting pgid for process: ' + proc)
      ERROR = 0
@@ -1690,7 +2220,15 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/process/procstat.py ganglia-3.7.
              logging.warning(' failed getting pgid: ' + str(e))
              stats[proc]['cpu'] = 0.0
              stats[proc]['mem'] = 0
-@@ -389,7 +389,7 @@
+@@ -383,13 +383,15 @@
+ 
+         mem = {
+             'units': 'B',
++            'value_type': 'float',
++            'format': '%.0f',
+             'description': 'The total memory utilization'}
+     )
+ 
      time_max = 60
      for label in descriptions:
          for proc in PROCESSES:
@@ -1699,7 +2237,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/process/procstat.py ganglia-3.7.
  
                  d = {
                      'name': 'procstat_' + proc + '_' + label,
-@@ -433,12 +433,12 @@
+@@ -433,12 +435,12 @@
          # Display them
          i = 0
          for f in fields:
@@ -1715,7 +2253,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/process/procstat.py ganglia-3.7.
  
  
  def display_proc_statm(pid):
-@@ -452,12 +452,12 @@
+@@ -452,12 +454,12 @@
          # Display them
          i = 0
          for f in fields:
@@ -1731,7 +2269,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/process/procstat.py ganglia-3.7.
  
  
  def metric_cleanup():
-@@ -502,7 +502,7 @@
+@@ -502,7 +504,7 @@
          update_stats()
  
          print('')
@@ -1740,7 +2278,7 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/process/procstat.py ganglia-3.7.
          time.sleep(MAX_UPDATE_TIME)
  
      metric_init(params)
-@@ -510,7 +510,7 @@
+@@ -510,7 +512,7 @@
      for d in descriptors:
          v = d['call_back'](d['name'])
          if not options.quiet:
@@ -1750,8 +2288,8 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/process/procstat.py ganglia-3.7.
          if options.gmetric:
              if d['value_type'] == 'uint':
 diff -ru ganglia-3.7.2.org/gmond/python_modules/ssl/entropy.py ganglia-3.7.2.new/gmond/python_modules/ssl/entropy.py
---- ganglia-3.7.2.org/gmond/python_modules/ssl/entropy.py	2024-11-14 23:44:01.716616982 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/ssl/entropy.py	2024-11-14 23:46:44.990253945 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/ssl/entropy.py	2024-11-15 08:55:59.642058105 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/ssl/entropy.py	2024-11-15 09:32:28.885085691 +0700
 @@ -53,4 +53,4 @@
      metric_init({})
      for d in descriptors:
@@ -1759,8 +2297,8 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/ssl/entropy.py ganglia-3.7.2.new
 -        print 'value for %s is %u' % (d['name'],  v)
 +        print('value for %s is %u' % (d['name'],  v))
 diff -ru ganglia-3.7.2.org/gmond/python_modules/varnish/varnish.py ganglia-3.7.2.new/gmond/python_modules/varnish/varnish.py
---- ganglia-3.7.2.org/gmond/python_modules/varnish/varnish.py	2024-11-14 23:44:01.713616933 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/varnish/varnish.py	2024-11-14 23:46:45.148256496 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/varnish/varnish.py	2024-11-15 08:55:59.641058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/varnish/varnish.py	2024-11-15 09:32:28.885085691 +0700
 @@ -51,7 +51,7 @@
  
  def create_desc(skel, prop):
@@ -1801,8 +2339,17 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/varnish/varnish.py ganglia-3.7.2
 +        print('Sleeping 15 seconds')
          time.sleep(15)
 diff -ru ganglia-3.7.2.org/gmond/python_modules/vm_stats/vm_stats.py ganglia-3.7.2.new/gmond/python_modules/vm_stats/vm_stats.py
---- ganglia-3.7.2.org/gmond/python_modules/vm_stats/vm_stats.py	2024-11-14 23:44:01.715616965 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/vm_stats/vm_stats.py	2024-11-14 23:46:45.263258354 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/vm_stats/vm_stats.py	2024-11-15 08:55:59.642058105 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/vm_stats/vm_stats.py	2024-11-15 09:32:49.968085957 +0700
+@@ -47,7 +47,7 @@
+         # convert to dict
+         metrics = {}
+         for line in file:
+-            parts = re.split("\s+", line)
++            parts = re.split(r"\s+", line)
+             metrics[parts[0]] = parts[1]
+ 
+         # update cache
 @@ -69,7 +69,7 @@
  
      try:
@@ -1848,12 +2395,620 @@ diff -ru ganglia-3.7.2.org/gmond/python_modules/vm_stats/vm_stats.py ganglia-3.7
 +            print('%s = %s' % (d['name'],  v))
 +        print('Sleeping 15 seconds')
          time.sleep(15)
+Only in ganglia-3.7.2.new/gmond/python_modules/vm_stats: vm_stats.py.orig
 diff -ru ganglia-3.7.2.org/gmond/python_modules/xen/xenstats.py ganglia-3.7.2.new/gmond/python_modules/xen/xenstats.py
---- ganglia-3.7.2.org/gmond/python_modules/xen/xenstats.py	2024-11-14 23:44:01.716616982 +0700
-+++ ganglia-3.7.2.new/gmond/python_modules/xen/xenstats.py	2024-11-14 23:46:45.282258661 +0700
+--- ganglia-3.7.2.org/gmond/python_modules/xen/xenstats.py	2024-11-15 08:55:59.641058104 +0700
++++ ganglia-3.7.2.new/gmond/python_modules/xen/xenstats.py	2024-11-15 09:32:28.885085691 +0700
 @@ -128,4 +128,4 @@
      metric_init('init')
      for d in descriptors:
          v = d['call_back'](d['name'])
 -        print 'value for %s is %u' % (d['name'],  v)
 +        print('value for %s is %u' % (d['name'],  v))
+diff -ru ganglia-3.7.2.org/gmond/sflow.c ganglia-3.7.2.new/gmond/sflow.c
+--- ganglia-3.7.2.org/gmond/sflow.c	2024-11-15 08:55:59.640058104 +0700
++++ ganglia-3.7.2.new/gmond/sflow.c	2024-11-15 09:28:23.389082598 +0700
+@@ -303,7 +303,8 @@
+   char mtitle_buf[SFLOW_MAX_METRIC_NAME_LEN];
+   if(ok || sflowCFG.submit_null_str) {
+     set_metric_name_and_title(&mname, &mtitle, mname_buf, mtitle_buf, metric_prefix, tag);
+-    fmsg.id = vmsg.id = gmetric_uint;
++    //fmsg.id = vmsg.id = gmetric_uint;
++    fmsg.id = vmsg.id = gmetric_string;
+     fmsg.Ganglia_metadata_msg_u.gfull.metric.type = "string";
+     vmsg.Ganglia_value_msg_u.gstr.metric_id.name = mname;
+     vmsg.Ganglia_value_msg_u.gstr.str = (ok ? (char *)val : sflowCFG.null_str);
+@@ -400,7 +401,7 @@
+ 
+     if(steal_and_guest) {
+       cpu_total += delta_cpu_steal;
+-      /* Note: cpu_guest is included in cpu_idle
++      /* Note: cpu_guest is included in cpu_user
+        * and cpu_guest_nice is included in cpu_nice
+        * so they do not contribute to cpu_total.
+        */
+@@ -1188,6 +1189,7 @@
+     SFLOWXDR_skip(x,4);
+     
+     machine_type = SFLOWXDR_next(x);
++
+     os_name = SFLOWXDR_next(x);
+     osrelease_len = SFLOWXDR_next(x);
+     if(osrelease_len > 0 && osrelease_len <= SFLOW_MAX_OSRELEASE_LEN) {
+diff -ru ganglia-3.7.2.org/gmond/sflow_gmetric.h ganglia-3.7.2.new/gmond/sflow_gmetric.h
+--- ganglia-3.7.2.org/gmond/sflow_gmetric.h	2024-11-15 08:55:59.644058105 +0700
++++ ganglia-3.7.2.new/gmond/sflow_gmetric.h	2024-11-15 09:28:23.389082598 +0700
+@@ -20,7 +20,7 @@
+ SFLOW_GMETRIC(SFLOW_M_cpu_sintr, "cpu_sintr", "", GANGLIA_SLOPE_BOTH, "%.2f", "cpu", NULL, "CPU Soft Interrupts" )
+ SFLOW_GMETRIC(SFLOW_M_cpu_steal, "cpu_steal", "%", GANGLIA_SLOPE_BOTH, "%.2f", "cpu", NULL, "CPU Steal" )
+ SFLOW_GMETRIC(SFLOW_M_cpu_guest, "cpu_guest", "%", GANGLIA_SLOPE_BOTH, "%.2f", "cpu", NULL, "CPU Guest" )
+-SFLOW_GMETRIC(SFLOW_M_cpu_guest_nice, "cpu_guest_nice", "%", GANGLIA_SLOPE_BOTH, "%.2f", "cpu", NULL, "CPU Guest Nice" )
++SFLOW_GMETRIC(SFLOW_M_cpu_guest_nice, "cpu_gnice", "%", GANGLIA_SLOPE_BOTH, "%.2f", "cpu", NULL, "CPU Guest Nice" )
+ SFLOW_GMETRIC(SFLOW_M_interrupts, "interrupts", "", GANGLIA_SLOPE_BOTH, "%.0f", "cpu", NULL, "Interrupts" )
+ SFLOW_GMETRIC(SFLOW_M_contexts, "contexts", "", GANGLIA_SLOPE_BOTH, "%.0f", "cpu", NULL, "Context Switches" )
+ SFLOW_GMETRIC(SFLOW_M_mem_total, "mem_total", "KB", GANGLIA_SLOPE_ZERO, "%.0f", "memory", NULL, "Memory Total" )
+diff -ru ganglia-3.7.2.org/lib/default_conf.h.in ganglia-3.7.2.new/lib/default_conf.h.in
+--- ganglia-3.7.2.org/lib/default_conf.h.in	2024-11-15 08:55:59.647058105 +0700
++++ ganglia-3.7.2.new/lib/default_conf.h.in	2024-11-15 09:28:23.389082598 +0700
+@@ -71,7 +71,7 @@
+   bind = 239.2.11.71\n\
+   retry_bind = true\n\
+   # Size of the UDP buffer. If you are handling lots of metrics you really\n\
+-  # should bump it up to e.g. 10MB or even higher.\n\ 
++  # should bump it up to e.g. 10MB or even higher.\n\
+   # buffer = 10485760\n\
+ }\n\
+ \n\
+@@ -270,6 +270,19 @@
+     title = \"CPU sintr\"\n\
+   }\n\
+   */\n\
++  /* The next two metrics are optional if you want more detail...\n\
++     ... since they are accounted for in cpu_user and cpu_nice.\n\
++  metric {\n\
++    name = \"cpu_guest\"\n\
++    value_threshold = \"1.0\"\n\
++    title = \"CPU guest\"\n\
++  }\n\
++  metric {\n\
++    name = \"cpu_gnice\"\n\
++    value_threshold = \"1.0\"\n\
++    title = \"CPU gnice\"\n\
++  }\n\
++  */\n\
+ }\n\
+ \n\
+ collection_group {\n\
+@@ -397,6 +410,24 @@
+ \n\
+ "
+ 
++#define LINUX_SPECIFIC_CONFIGURATION "\
++collection_group {\n\
++  collect_every = 40\n\
++  time_threshold = 180\n\
++  metric {\n\
++    name = \"mem_available\"\n\
++    value_threshold = \"1024.0\"\n\
++    title = \"Available Memory\"\n\
++  }\n\
++  metric {\n\
++    name = \"mem_sreclaimable\"\n\
++    value_threshold = \"1024.0\"\n\
++    title = \"Slab Memory Reclaimable\"\n\
++  }\n\
++}\n\
++\n\
++"
++
+ #define SOLARIS_SPECIFIC_CONFIGURATION "\
+ /* solaris specific metrics begin */\n\
+ collection_group {\n\
+diff -ru ganglia-3.7.2.org/lib/hash.c ganglia-3.7.2.new/lib/hash.c
+--- ganglia-3.7.2.org/lib/hash.c	2024-11-15 08:55:59.647058105 +0700
++++ ganglia-3.7.2.new/lib/hash.c	2024-11-15 09:28:23.389082598 +0700
+@@ -346,6 +346,10 @@
+   for (; bucket != NULL; last = bucket, bucket = bucket->next)
+     {
+       node_t tmp;
++      if (bucket->key && !hash_keycmp(hash, key, bucket->key))
++        {
++          continue;
++        }
+       if (bucket == &hash->node[i]) 
+         {
+           tmp.key = bucket->key;
+diff -ru ganglia-3.7.2.org/lib/libgmond.c ganglia-3.7.2.new/lib/libgmond.c
+--- ganglia-3.7.2.org/lib/libgmond.c	2024-11-15 08:55:59.647058105 +0700
++++ ganglia-3.7.2.new/lib/libgmond.c	2024-11-15 09:28:23.389082598 +0700
+@@ -26,7 +26,11 @@
+ #include <dirent.h>
+ #include <fnmatch.h>
+ 
+-static char myhost[APRMAXHOSTLEN+1];
++/* functions throughout this file will initialize this
++ * variable if myhost[0] == '\0', so ensure the compiler
++ * initializes it as an empty string:
++ */
++static char myhost[APRMAXHOSTLEN+1] = "";
+ 
+ /***** IMPORTANT ************
+ Any changes that you make to this file need to be reconciled in ./conf.pod
+@@ -210,6 +214,9 @@
+   default_gmond_configuration = apr_pstrcat(context, default_gmond_configuration, SFLOW_CONFIGURATION, NULL);
+ #endif
+   default_gmond_configuration = apr_pstrcat(context, default_gmond_configuration, COLLECTION_GROUP_LIST, NULL);
++#if LINUX
++  default_gmond_configuration = apr_pstrcat(context, default_gmond_configuration, LINUX_SPECIFIC_CONFIGURATION, NULL);
++#endif
+ #if SOLARIS
+   default_gmond_configuration = apr_pstrcat(context, default_gmond_configuration, SOLARIS_SPECIFIC_CONFIGURATION, NULL);
+ #endif
+diff -ru ganglia-3.7.2.org/lib/Makefile.am ganglia-3.7.2.new/lib/Makefile.am
+--- ganglia-3.7.2.org/lib/Makefile.am	2024-11-15 08:55:59.647058105 +0700
++++ ganglia-3.7.2.new/lib/Makefile.am	2024-11-15 09:28:50.334082937 +0700
+@@ -14,7 +14,7 @@
+ GCFLAGS += -DSFLOW
+ endif
+ 
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@ @LIBTIRPC_INCLUDES@
+ AM_CFLAGS = -I.. -I. -I$(top_builddir)/include/ $(GCFLAGS) -DSYSCONFDIR='"$(sysconfdir)"'
+ 
+ include_HEADERS = gm_protocol.h
+diff -ru ganglia-3.7.2.org/libmetrics/darwin/metrics.c ganglia-3.7.2.new/libmetrics/darwin/metrics.c
+--- ganglia-3.7.2.org/libmetrics/darwin/metrics.c	2024-11-15 08:55:59.635058104 +0700
++++ ganglia-3.7.2.new/libmetrics/darwin/metrics.c	2024-11-15 09:28:23.389082598 +0700
+@@ -37,7 +37,7 @@
+ #include <sys/socket.h>
+ #include <stdio.h>
+ 
+-/* Added for disk statstics */
++/* Added for disk statistics */
+ #include <sys/param.h>
+ #include <sys/ucred.h>
+ #include <sys/mount.h>
+@@ -464,6 +464,28 @@
+ {
+    g_val_t val;
+    val.f = 0.0;
++   return val;
++}
++
++/*
++** FIXME
++*/
++g_val_t 
++cpu_guest_func ( void )
++{
++   g_val_t val;
++   val.f = 0.0;
++   return val;
++}
++
++/*
++** FIXME
++*/
++g_val_t 
++cpu_gnice_func ( void )
++{
++   g_val_t val;
++   val.f = 0.0;
+    return val;
+ }
+ 
+diff -ru ganglia-3.7.2.org/libmetrics/libmetrics.h ganglia-3.7.2.new/libmetrics/libmetrics.h
+--- ganglia-3.7.2.org/libmetrics/libmetrics.h	2024-11-15 08:55:59.635058104 +0700
++++ ganglia-3.7.2.new/libmetrics/libmetrics.h	2024-11-15 09:28:23.389082598 +0700
+@@ -55,6 +55,8 @@
+  g_val_t cpu_intr_func(void);
+  g_val_t cpu_sintr_func(void);
+  g_val_t cpu_steal_func(void);
++ g_val_t cpu_guest_func(void);
++ g_val_t cpu_gnice_func(void);
+  g_val_t bytes_in_func(void);
+  g_val_t bytes_out_func(void);
+  g_val_t pkts_in_func(void);
+@@ -77,7 +79,10 @@
+  g_val_t location_func(void);
+ 
+ #ifdef LINUX
++ g_val_t mem_available_func (void);
++ g_val_t mem_slab_func (void);
+  g_val_t mem_sreclaimable_func (void);
++ g_val_t mem_sunreclaim_func (void);
+ #endif
+ 
+ /* the following are additional internal metrics added by swagner
+diff -ru ganglia-3.7.2.org/libmetrics/linux/metrics.c ganglia-3.7.2.new/libmetrics/linux/metrics.c
+--- ganglia-3.7.2.org/libmetrics/linux/metrics.c	2024-11-15 08:55:59.637058104 +0700
++++ ganglia-3.7.2.new/libmetrics/linux/metrics.c	2024-11-15 09:28:23.390082598 +0700
+@@ -104,6 +104,8 @@
+ ** i=4 : Linux 2.4.x
+ ** i=7 : Linux 2.6.x
+ ** i=8 : Linux 2.6.11
++** i=9 : Linux 2.6.24
++** i=10 : Linux 2.6.33
+ */
+    while (strncmp(p, "cpu", 3)) {
+      p = skip_token(p);
+@@ -262,7 +264,11 @@
+                        l_bytes_in += rbi - ns->rbi;
+                     } else {
+                        debug_msg("update_ifdata(%s) - Overflow in rbi: %"PRI_STAT" -> %"PRI_STAT,caller,ns->rbi,rbi);
+-                       l_bytes_in += STAT_MAX - ns->rbi + rbi;
++                       if ( ns->rbi <= ULONG_MAX ) { /* assume it's more reasonable that the counter rolled over at ULONG_MAX than ULLONG_MAX */
++                          l_bytes_in += ULONG_MAX - ns->rbi + rbi;
++                       } else {
++                          l_bytes_in += STAT_MAX - ns->rbi + rbi;
++                       }
+                     }
+                     ns->rbi = rbi;
+ 
+@@ -271,7 +277,11 @@
+                        l_pkts_in += rpi - ns->rpi;
+                     } else {
+                        debug_msg("updata_ifdata(%s) - Overflow in rpi: %"PRI_STAT" -> %"PRI_STAT,caller,ns->rpi,rpi);
+-                       l_pkts_in += STAT_MAX - ns->rpi + rpi;
++                       if ( ns->rpi <= ULONG_MAX ) {
++                          l_pkts_in += ULONG_MAX - ns->rpi + rpi;
++                       } else {
++                          l_pkts_in += STAT_MAX - ns->rpi + rpi;
++                       }
+                     }
+                     ns->rpi = rpi;
+ 
+@@ -284,7 +294,11 @@
+                        l_bytes_out += rbo - ns->rbo;
+                     } else {
+                        debug_msg("update_ifdata(%s) - Overflow in rbo: %"PRI_STAT" -> %"PRI_STAT,caller,ns->rbo,rbo);
+-                       l_bytes_out += STAT_MAX - ns->rbo + rbo;
++                       if ( ns->rbo <= ULONG_MAX ) {
++                          l_bytes_out += ULONG_MAX - ns->rbo + rbo;
++                       } else {
++                          l_bytes_out += STAT_MAX - ns->rbo + rbo;
++                       }
+                     }
+                     ns->rbo = rbo;
+ 
+@@ -293,7 +307,11 @@
+                        l_pkts_out += rpo - ns->rpo;
+                     } else {
+                        debug_msg("update_ifdata(%s) - Overflow in rpo: %"PRI_STAT" -> %"PRI_STAT,caller,ns->rpo,rpo);
+-                       l_pkts_out += STAT_MAX - ns->rpo + rpo;
++                       if ( ns->rpo <= ULONG_MAX ) {
++                          l_pkts_out += ULONG_MAX - ns->rpo + rpo;
++                       } else {
++                          l_pkts_out += STAT_MAX - ns->rpo + rpo;
++                       }
+                     }
+                     ns->rpo = rpo;
+                   }
+@@ -593,36 +611,30 @@
+ 
+ #ifdef __i386__
+    snprintf(val.str, MAX_G_STRING_SIZE, "x86");
+-#endif
+-#ifdef __x86_64__
++#elif __x86_64__
+    snprintf(val.str, MAX_G_STRING_SIZE, "x86_64");
+-#endif
+-#ifdef __ia64__
++#elif __ia64__
+    snprintf(val.str, MAX_G_STRING_SIZE, "ia64");
+-#endif
+-#ifdef __sparc__
++#elif __sparc__
+    snprintf(val.str, MAX_G_STRING_SIZE, "sparc");
+-#endif
+-#ifdef __alpha__
++#elif __alpha__
+    snprintf(val.str, MAX_G_STRING_SIZE, "alpha");
+-#endif
+-#ifdef __powerpc__
++#elif __powerpc__
+    snprintf(val.str, MAX_G_STRING_SIZE, "powerpc");
+-#endif
+-#ifdef __m68k__
++#elif __m68k__
+    snprintf(val.str, MAX_G_STRING_SIZE, "m68k");
+-#endif
+-#ifdef __mips__
++#elif __mips__
+    snprintf(val.str, MAX_G_STRING_SIZE, "mips");
+-#endif
+-#ifdef __arm__
++#elif __arm__
+    snprintf(val.str, MAX_G_STRING_SIZE, "arm");
+-#endif
+-#ifdef __hppa__
++#elif __aarch64__
++   snprintf(val.str, MAX_G_STRING_SIZE, "aarch64");
++#elif __hppa__
+    snprintf(val.str, MAX_G_STRING_SIZE, "hppa");
+-#endif
+-#ifdef __s390__
++#elif __s390__
+    snprintf(val.str, MAX_G_STRING_SIZE, "s390");
++#else
++   snprintf(val.str, MAX_G_STRING_SIZE, "unknown");
+ #endif
+ 
+    return val;
+@@ -691,6 +703,8 @@
+    p = skip_whitespace(p);
+    steal_jiffies = strtod( p, &p );
+ 
++   /* guest is included in user already, and gnice is included in nice */
++
+    return user_jiffies + nice_jiffies + system_jiffies + idle_jiffies +
+           wio_jiffies + irq_jiffies + sirq_jiffies + steal_jiffies;
+ }
+@@ -1057,6 +1071,89 @@
+ }
+ 
+ g_val_t
++cpu_guest_func ( void )
++{
++   char *p;
++   static g_val_t val;
++   static struct timeval stamp={0,0};
++   static double last_guest_jiffies,  guest_jiffies,
++                 last_total_jiffies, total_jiffies, diff;
++
++   p = update_file(&proc_stat);
++   if((proc_stat.last_read.tv_sec != stamp.tv_sec) &&
++      (proc_stat.last_read.tv_usec != stamp.tv_usec)) {
++     stamp = proc_stat.last_read;
++
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     guest_jiffies  = strtod( p , (char **)NULL );
++     total_jiffies = total_jiffies_func();
++
++     diff = guest_jiffies - last_guest_jiffies;
++
++     if ( diff )
++       val.f = (diff/(total_jiffies - last_total_jiffies))*100;
++     else
++       val.f = 0.0;
++
++     last_guest_jiffies  = guest_jiffies;
++     last_total_jiffies = total_jiffies;
++
++   }
++
++   return val;
++}
++
++g_val_t
++cpu_gnice_func ( void )
++{
++   char *p;
++   static g_val_t val;
++   static struct timeval stamp={0,0};
++   static double last_gnice_jiffies,  gnice_jiffies,
++                 last_total_jiffies, total_jiffies, diff;
++
++   p = update_file(&proc_stat);
++   if((proc_stat.last_read.tv_sec != stamp.tv_sec) &&
++      (proc_stat.last_read.tv_usec != stamp.tv_usec)) {
++     stamp = proc_stat.last_read;
++
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     p = skip_token(p);
++     gnice_jiffies  = strtod( p , (char **)NULL );
++     total_jiffies = total_jiffies_func();
++
++     diff = gnice_jiffies - last_gnice_jiffies;
++
++     if ( diff )
++       val.f = (diff/(total_jiffies - last_total_jiffies))*100;
++     else
++       val.f = 0.0;
++
++     last_gnice_jiffies  = gnice_jiffies;
++     last_total_jiffies = total_jiffies;
++
++   }
++
++   return val;
++}
++
++g_val_t
+ load_one_func ( void )
+ {
+    g_val_t val;
+@@ -1151,6 +1248,23 @@
+ }
+ 
+ g_val_t
++mem_available_func ( void )
++{
++   char *p;
++   g_val_t val;
++
++   p = strstr( update_file(&proc_meminfo), "MemAvailable:" );
++   if (p) {
++     p = skip_token(p);
++     val.f = atof( p );
++   } else {
++     val.f = 0.0;
++   }
++
++   return val;
++}
++
++g_val_t
+ mem_shared_func ( void )
+ {
+    char *p;
+@@ -1188,6 +1302,23 @@
+ }
+ 
+ g_val_t
++mem_slab_func ( void )
++{
++   char *p;
++   g_val_t val;
++
++   p = strstr( update_file(&proc_meminfo), "Slab:" );
++   if(p) {
++     p = skip_token(p);
++     val.f = atof( p );
++   } else {
++     val.f = 0;
++   }
++
++   return val;
++}
++
++g_val_t
+ mem_sreclaimable_func ( void )
+ {
+    char *p;
+@@ -1205,6 +1336,23 @@
+ }
+ 
+ g_val_t
++mem_sunreclaim_func ( void )
++{
++   char *p;
++   g_val_t val;
++
++   p = strstr( update_file(&proc_meminfo), "SUnreclaim:" );
++   if(p) {
++     p = skip_token(p);
++     val.f = atof( p );
++   } else {
++     val.f = 0;
++   }
++
++   return val;
++}
++
++g_val_t
+ mem_cached_func ( void )
+ {
+    char *p;
+@@ -1388,7 +1536,8 @@
+       if (!strncmp(mode, "ro", 2)) continue;
+       if (remote_mount(device, type)) continue;
+       if (strncmp(device, "/dev/", 5) != 0 &&
+-          strncmp(device, "/dev2/", 6) != 0) continue;
++          strncmp(device, "/dev2/", 6) != 0 &&
++          strncmp(type, "zfs", 3) != 0) continue;
+       thispct = device_space(mount, device, total_size, total_free);
+       debug_msg("Counting device %s (%.2f %%)", device, thispct);
+       if (!max || max<thispct)
+diff -ru ganglia-3.7.2.org/libmetrics/openbsd/metrics.c ganglia-3.7.2.new/libmetrics/openbsd/metrics.c
+--- ganglia-3.7.2.org/libmetrics/openbsd/metrics.c	2024-11-15 08:55:59.635058104 +0700
++++ ganglia-3.7.2.new/libmetrics/openbsd/metrics.c	2024-11-15 09:28:23.390082598 +0700
+@@ -21,6 +21,7 @@
+ #include <sys/swap.h>
+ #include <uvm/uvm_param.h>
+ #include <sys/proc.h>
++#include <sys/vmmeter.h>
+ 
+ #include <sys/socket.h>
+ #include <net/if.h>
+@@ -485,6 +486,28 @@
+ 	return val;
+ }
+ 
++/*
++** FIXME
++*/
++g_val_t 
++cpu_guest_func ( void )
++{
++   g_val_t val;
++   val.f = 0.0;
++   return val;
++}
++
++/*
++** FIXME
++*/
++g_val_t 
++cpu_gnice_func ( void )
++{
++   g_val_t val;
++   val.f = 0.0;
++   return val;
++}
++
+ g_val_t
+ mem_free_func ( void )
+ {
+diff -ru ganglia-3.7.2.org/libmetrics/solaris/metrics.c ganglia-3.7.2.new/libmetrics/solaris/metrics.c
+--- ganglia-3.7.2.org/libmetrics/solaris/metrics.c	2024-11-15 08:55:59.634058104 +0700
++++ ganglia-3.7.2.new/libmetrics/solaris/metrics.c	2024-11-15 09:28:23.390082598 +0700
+@@ -1366,3 +1366,26 @@
+    return val;
+ }
+ 
++
++/*
++** FIXME
++*/
++g_val_t 
++cpu_guest_func ( void )
++{
++   g_val_t val;
++   val.f = 0.0;
++   return val;
++}
++
++/*
++** FIXME
++*/
++g_val_t 
++cpu_gnice_func ( void )
++{
++   g_val_t val;
++   val.f = 0.0;
++   return val;
++}
++
+diff -ru ganglia-3.7.2.org/libmetrics/tests/test-metrics.c ganglia-3.7.2.new/libmetrics/tests/test-metrics.c
+--- ganglia-3.7.2.org/libmetrics/tests/test-metrics.c	2024-11-15 08:55:59.636058104 +0700
++++ ganglia-3.7.2.new/libmetrics/tests/test-metrics.c	2024-11-15 09:28:23.390082598 +0700
+@@ -41,6 +41,10 @@
+   {
+   "cpu_nice", cpu_nice_func, g_float},
+   {
++  "cpu_guest", cpu_guest_func, g_float},
++  {
++  "cpu_gnice", cpu_gnice_func, g_float},
++  {
+   "cpu_system", cpu_system_func, g_float},
+   {
+   "cpu_idle", cpu_idle_func, g_float},
+diff -ru ganglia-3.7.2.org/Makefile.am ganglia-3.7.2.new/Makefile.am
+--- ganglia-3.7.2.org/Makefile.am	2024-11-15 08:55:59.637058104 +0700
++++ ganglia-3.7.2.new/Makefile.am	2024-11-15 09:28:50.332082937 +0700
+@@ -9,7 +9,7 @@
+ endif
+ 
+ EXTRA_SUBDIRS = "gmetad-python contrib solaris"
+-INCLUDES = @APR_INCLUDES@
++INCLUDES = @APR_INCLUDES@  @LIBTIRPC_INCLUDES@
+ 
+ AUTOMAKE_OPTIONS = dist-bzip2 dist-tarZ dist-zip
+ ACLOCAL_AMFLAGS = -I m4
