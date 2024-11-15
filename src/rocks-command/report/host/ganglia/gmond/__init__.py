@@ -269,21 +269,31 @@ class Command(rocks.commands.report.host.ganglia.command):
 }\n""" % (clustername, owner, latlong, url))
 
 		self.addText( "\n/* Host configuration */")
-		self.addText( """host {
-	location="%s"
-}\n""" % (location))
-
-		self.addText( "\n/* UDP Channels for Send and Recv */")
+#		self.addText( """host {
+#	location="%s"
+#}\n""" % (location))
+#
+#		self.addText( "\n/* UDP Channels for Send and Recv */")
+#		self.addText( """udp_recv_channel {
+#	mcast_join = %s
+#	port = 8649
+#}\n""" % (mcastaddr))
+#
+#		if host in frontends:
+#			sendinfo = 'mcast_join = %s' % mcastaddr
+#		else:
+#			sendinfo = 'mcast_join = %s\n\thost = %s' % \
+#				(mcastaddr, private_address)
+#
+#		self.addText( """udp_send_channel {
+#	%s
+#	port = 8649
+#}\n""" % (sendinfo))
 		self.addText( """udp_recv_channel {
-	mcast_join = %s
 	port = 8649
-}\n""" % (mcastaddr))
+}\n""")
 
-		if host in frontends:
-			sendinfo = 'mcast_join = %s' % mcastaddr
-		else:
-			sendinfo = 'mcast_join = %s\n\thost = %s' % \
-				(mcastaddr, private_address)
+		sendinfo = 'host = %s' % (private_address)
 
 		self.addText( """udp_send_channel {
 	%s
